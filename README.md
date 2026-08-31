@@ -36,3 +36,5 @@ python scripts\check_environment.py
 ## 目录
 
 `docs/` 保存 D1 的基线与记录，`scripts/` 保存人工执行入口，`src/` 保存可演进的模块接口和已完成的轻量工具，`tests/` 保存自动化测试。开发任务、风险和当日决策见 `docs/`。
+
+团队协作请遵循 [Git 协作操作手册](docs/git_workflow.md)。
