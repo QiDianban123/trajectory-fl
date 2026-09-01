@@ -142,6 +142,8 @@ def _validate_data(config: Mapping[str, Any]) -> None:
             "processed_dir",
             "sample_dir",
             "frame_rate_hz",
+            "coordinate_system",
+            "coordinate_unit",
             "required_columns",
         ),
     )
@@ -149,6 +151,10 @@ def _validate_data(config: Mapping[str, Any]) -> None:
         raise ConfigError("dataset.name must be 'highd' for the frozen P0 dataset")
     for key in ("raw_dir", "processed_dir", "sample_dir"):
         _non_empty_string(dataset[key], f"dataset.{key}")
+    if dataset["coordinate_system"] != "highd_road_local":
+        raise ConfigError("dataset.coordinate_system must be highd_road_local")
+    if dataset["coordinate_unit"] != "meter":
+        raise ConfigError("dataset.coordinate_unit must be meter")
     _positive_number(dataset["frame_rate_hz"], "dataset.frame_rate_hz")
     columns = dataset["required_columns"]
     if not isinstance(columns, list) or not all(isinstance(item, str) for item in columns):
@@ -166,9 +172,25 @@ def _validate_data(config: Mapping[str, Any]) -> None:
     if sequence["coordinate_dimension"] != 2:
         raise ConfigError("sequence.coordinate_dimension must be 2")
 
-    _require_keys(split, "split", ("group_by", "train", "validation", "test", "seed"))
+    _require_keys(
+        split,
+        "split",
+        (
+            "strategy",
+            "group_by",
+            "require_group_disjointness",
+            "train",
+            "validation",
+            "test",
+            "seed",
+        ),
+    )
+    if split["strategy"] != "group_then_window":
+        raise ConfigError("split.strategy must be group_then_window")
     if split["group_by"] not in ("vehicle_id", "scenario_id"):
         raise ConfigError("split.group_by must be vehicle_id or scenario_id")
+    if split["require_group_disjointness"] is not True:
+        raise ConfigError("split.require_group_disjointness must be true")
     _positive_int(split["seed"], "split.seed", allow_zero=True)
     ratios = [split[name] for name in ("train", "validation", "test")]
     for name, value in zip(("train", "validation", "test"), ratios, strict=True):
@@ -176,13 +198,41 @@ def _validate_data(config: Mapping[str, Any]) -> None:
     if abs(sum(ratios) - 1.0) > 1e-9:
         raise ConfigError("split train/validation/test ratios must sum to 1")
 
-    _require_keys(normalization, "normalization", ("method", "fit_split", "per_axis"))
+    _require_keys(
+        normalization,
+        "normalization",
+        ("method", "fit_split", "per_axis", "statistics_artifact"),
+    )
     if normalization["method"] != "standard":
         raise ConfigError("normalization.method must be standard")
     if normalization["fit_split"] != "train":
         raise ConfigError("normalization.fit_split must be train to prevent leakage")
     if not isinstance(normalization["per_axis"], bool):
         raise ConfigError("normalization.per_axis must be boolean")
+    _non_empty_string(normalization["statistics_artifact"], "normalization.statistics_artifact")
+
+    preprocessing = _section(config, "preprocessing")
+    _require_keys(
+        preprocessing,
+        "preprocessing",
+        (
+            "time_order",
+            "missing_required_policy",
+            "nonfinite_coordinate_policy",
+            "duplicate_frame_policy",
+            "minimum_track_frames",
+        ),
+    )
+    expected_policies = {
+        "time_order": "strict_increasing",
+        "missing_required_policy": "reject_sample",
+        "nonfinite_coordinate_policy": "reject_sample",
+        "duplicate_frame_policy": "reject_track",
+    }
+    for key, expected in expected_policies.items():
+        if preprocessing[key] != expected:
+            raise ConfigError(f"preprocessing.{key} must be {expected}")
+    _positive_int(preprocessing["minimum_track_frames"], "preprocessing.minimum_track_frames")
 
 
 def _validate_model(config: Mapping[str, Any]) -> None:

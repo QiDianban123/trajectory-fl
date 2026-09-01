@@ -44,11 +44,33 @@ P0 不使用变长序列或 mask；样本必须满足固定 `T_h/T_f`、有限�
 - 模型输入、标签和输出处于同一标准化坐标系；评价层必须先 inverse-transform，再在米制坐标计算 ADE/FDE。
 - scaler 及其拟合数据版本属于运行产物；任何从 validation/test 拟合的配置均视为 P1 严重缺陷。
 
+### 3.3 数据层接口与 metadata（D2-B 确认）
+
+`src.data.adapters.DatasetAdapter` 是唯一的原始数据格式边界，冻结以下三个方法：
+
+| 方法 | 输入 | 输出/约束 |
+|---|---|---|
+| `load_raw(source)` | 原始数据目录或文件路径 | 仅读取原始数据，不执行项目级清洗 |
+| `preprocess(raw, config)` | 原始表与 data config | 应用字段检查、异常策略、切分和训练集 scaler |
+| `build_samples(cleaned, config)` | 已清洗且已切分的数据 | 只从单一 split 构造固定长度 `TrajectorySample` |
+
+`TrajectorySample` 固定为 `history`、`future`、`meta` 三字段。前两个字段必须是有限的 `float32 [T, 2]` 数组；`meta` 必须包含 `dataset_name`、`data_version`、`recording_id`、`vehicle_id`、history/future 首尾 frame、`split_id` 和 `split`。D4 才增加可选 `client_id`。
+
+`TrajectoryDataset` 只容纳同一 `split`、`split_id` 和 `WindowSpec` 的样本，并在构造时验证 history/future 的长度。该容器不依赖 PyTorch；D4 可以在其外建立 DataLoader 包装，而不能放宽这些数据不变量。
+
+### 3.4 数据防泄漏与异常契约（D2-B 确认）
+
+- 先为每个 `vehicle_id`（备选 `scenario_id`）分配一个 split，再生成窗口；同一 group 出现在多个 split 时必须立即报错。
+- frame 必须严格递增，重复/乱序 frame 按 `reject_track` 拒绝；history 最后一帧必须早于 future 第一帧。
+- 缺失必需字段或非有限坐标按 `reject_sample` 拒绝，最短轨迹长度不足 `minimum_track_frames` 的记录不参与样本构造。
+- `TrainingCoordinateScaler.fit(..., split="train")` 是唯一允许拟合统计量的入口；validation/test 只能调用 transform，评价层调用 inverse-transform。
+- zero-variance 坐标轴使用缩放值 1，防止 NaN/Inf；原始 mean/scale 与 `split_id` 一起保存。
+
 ## 4. 配置层级与校验
 
 配置文件分为三层，均包含 `schema_version: 1`：
 
-1. `configs/data.yaml`：数据来源、列契约、序列长度、先分组切分策略、归一化边界。
+1. `configs/data.yaml`：数据来源、列契约、坐标单位、序列长度、先分组切分策略、归一化与异常处理边界。
 2. `configs/model.yaml`：模型结构、Tensor 维度和最小训练默认值。
 3. `configs/experiments/*.yaml`：run 名称、模式、seed、输出根目录、对数据/模型配置的引用和运行设备。
 
@@ -123,7 +145,7 @@ scope,client_id,aggregation,sample_count,coordinate_unit,ade,fde,total_seconds,e
 
 ## 8. 待 B—F 确认的接口
 
-- B：highD 字段映射、`meta` 必需键、split 清单和 scaler 序列化格式。
+- B：highD 字段映射和 scaler 的最终落盘格式仍待 D3 实际数据探查；`meta`、split 安全和训练集 scaler 契约已确认。
 - C：绝对位置或位移预测的最终选择、Trainer 返回结构、device/dtype 细节。
 - D：客户端更新校验、非浮点 buffer 策略、联邦轮次统计结构。
 - E：Local-only 汇总字段、图表函数签名和 JSON/CSV 一致性实现。
