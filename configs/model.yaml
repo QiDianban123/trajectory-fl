@@ -1,0 +1,19 @@
+schema_version: 1
+
+model:
+  name: lstm_encoder_decoder
+  history_steps: 75
+  future_steps: 125
+  input_size: 2
+  output_size: 2
+  hidden_size: 64
+  num_layers: 1
+  dropout: 0.0
+  coordinate_representation: absolute_position
+
+training:
+  loss: mse
+  optimizer: adam
+  learning_rate: 0.001
+  batch_size: 32
+  epochs: 1

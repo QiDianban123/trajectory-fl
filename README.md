@@ -1,6 +1,6 @@
 # 基于联邦学习的车辆轨迹预测系统
 
-本仓库是“基于联邦学习的车辆轨迹预测系统”的独立项目根目录。D1 已完成需求基线、数据选型、工程骨架、接口草案和测试入口；D2 冻结接口后再开始功能实现。
+本仓库是“基于联邦学习的车辆轨迹预测系统”的独立项目根目录。D1 已完成需求基线和数据选型；D2 正在冻结架构、配置与公共接口，之后再开始功能实现。
 
 ## D1 已确定的范围
 
@@ -17,10 +17,18 @@ py -3.10 -m venv .venv
 python -m pip install -r requirements.txt
 pytest
 python -m src.cli status
+python -m src.cli validate-config
 python scripts\check_environment.py
 ```
 
 若尚未安装 Python，请先安装 Python 3.10 或更新版本，并重新打开终端。准备数据时，原始 highD CSV 放入 `data/raw/`；不要提交原始数据。
+
+## D2 配置与命令契约
+
+- `configs/data.yaml`、`configs/model.yaml` 和 `configs/experiments/smoke.yaml` 是最小可校验配置。
+- `python -m src.cli validate-config` 校验 YAML schema 以及数据/模型的序列维度一致性。
+- `prepare-data`、`train`、`compare` 已保留为后续实现入口；当前调用会明确提示未实现并返回非零退出码。
+- 架构、Tensor、配置、输出目录和结果格式见 [D2 设计基线](docs/design.md)。
 
 ## D1 交付物映射
 
