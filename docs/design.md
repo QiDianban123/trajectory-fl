@@ -84,6 +84,14 @@ Client 接收带 round 与 `global_state_id` 的不可变下发请求，未来�
 
 Local-only 每个客户端必须使用全新模型实例和同一基线 state 的深拷贝；客户端训练结果不得成为其他客户端的初始状态。`run_local_only` 负责复制 state，实验编排器负责创建新模型。
 
+### 3.7 评价、图表与结果记录接口（D2-E 确认）
+
+`ade`、`fde` 和 `compute_metrics` 只接受物理坐标；调用者必须先对模型输出和标签执行 scaler 的 inverse-transform，单位固定为 `meter`。传入 `coordinate_unit="normalized"` 或其他单位立即报错。输入支持 `[T,2]` 或 `[B,T,2]`，shape 不匹配、空时间维和非有限值均拒绝。
+
+`plot_trajectory`、`plot_convergence` 和 `plot_mode_comparison` 只负责绘图与路径创建，返回实际 `Path`，不负责训练、指标转换或结果删除。图表输出必须位于当前运行的 `figures/` 目录或其子路径。
+
+`ResultRecord` 是三种模式共享的结果事实对象，固定包含 `run_id`、`code_sha`、`seed`、`split_id`、`mode`、`sample_count`、`ade`、`fde`、`total_seconds`、`coordinate_unit` 和 artifact 路径。`write_json` 输出嵌套 `metrics`/`timing_seconds`/`artifacts`；`write_csv` 输出同一记录的扁平视图，字段顺序由 `CSV_FIELDS` 固定。JSON 是事实源，CSV 不得手工改写。
+
 ## 4. 配置层级与校验
 
 配置文件分为三层，均包含 `schema_version: 1`：
@@ -116,7 +124,7 @@ outputs/<run_id>/
 ├── metadata.json        # run_id、代码 SHA、数据版本、seed、split_id、环境
 ├── train.log
 ├── metrics.json
-├── metrics.csv
+├── metrics.csv           # 与 metrics.json 同源的扁平视图
 ├── checkpoints/
 │   └── best.pt
 └── figures/
@@ -155,8 +163,8 @@ Local-only 可在顶层增加 `clients` 列表，但全局/宏平均与加权平
 每行代表一个可比较评价结果，固定列为：
 
 ```text
-schema_version,run_id,status,mode,seed,split_id,code_sha,dataset,model,
-scope,client_id,aggregation,sample_count,coordinate_unit,ade,fde,total_seconds,error
+schema_version,run_id,status,code_sha,seed,split_id,mode,dataset,model,
+sample_count,coordinate_unit,ade,fde,total_seconds,artifact_paths
 ```
 
 `scope` 取 `global` 或 `client`；非客户端行的 `client_id` 为空。JSON 是完整事实源，CSV 是扁平汇总视图，二者必须由同一记录对象生成。
@@ -166,5 +174,5 @@ scope,client_id,aggregation,sample_count,coordinate_unit,ade,fde,total_seconds,e
 - B：highD 字段映射和 scaler 的最终落盘格式仍待 D3 实际数据探查；`meta`、split 安全和训练集 scaler 契约已确认。
 - C：绝对位置预测、Trainer 返回结构、float32/device 责任和 checkpoint envelope 已确认；D5 再实现 LSTM。
 - D：Client/Server/Aggregator、失败记录、状态校验和 `preserve_global` 非浮点策略已确认；D8 再实现轮次与 FedAvg 数值计算。
-- E：Local-only 汇总字段、图表函数签名和 JSON/CSV 一致性实现。
+- E：Local-only 汇总字段、图表函数签名和 JSON/CSV 一致性实现已确认；正式实验汇总在 D11—D13 生成。
 - F：`run_id` 生成、日志格式、路径安全、seed 覆盖范围和共享测试夹具。

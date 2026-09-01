@@ -20,3 +20,8 @@ def test_metrics_reject_mismatched_shapes() -> None:
 def test_metrics_reject_nan() -> None:
     with pytest.raises(ValueError, match="finite"):
         fde(np.array([[float("nan"), 0.0]]), np.zeros((1, 2)))
+
+
+def test_metrics_require_physical_meter_coordinates() -> None:
+    with pytest.raises(ValueError, match="physical coordinates in meters"):
+        ade(np.zeros((1, 2)), np.zeros((1, 2)), coordinate_unit="normalized")

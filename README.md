@@ -49,6 +49,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 - `python -m src.cli validate-config` 校验 YAML schema 以及数据/模型的序列维度一致性。
 - `prepare-data`、`train`、`compare` 已保留为后续实现入口；当前调用会明确提示未实现并返回非零退出码。
 - 架构、Tensor、配置、输出目录和结果格式见 [D2 设计基线](docs/design.md)。
+- 运行产物包括 `metrics.json`、`metrics.csv`、`figures/` 和 `checkpoints/`；JSON 是结果事实源，CSV 是自动生成的扁平视图。
 
 ## D1 交付物映射
 
