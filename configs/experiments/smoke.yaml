@@ -1,0 +1,15 @@
+schema_version: 1
+
+run:
+  name: d2-smoke
+  mode: smoke
+  seed: 42
+  output_root: outputs
+
+configs:
+  data: configs/data.yaml
+  model: configs/model.yaml
+
+execution:
+  device: cpu
+  num_workers: 0

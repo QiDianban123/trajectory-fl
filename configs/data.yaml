@@ -1,0 +1,27 @@
+schema_version: 1
+
+dataset:
+  name: highd
+  raw_dir: data/raw
+  processed_dir: data/processed
+  sample_dir: data/sample
+  frame_rate_hz: 25
+  required_columns: [id, frame, x, y]
+
+sequence:
+  history_steps: 75
+  future_steps: 125
+  stride: 1
+  coordinate_dimension: 2
+
+split:
+  group_by: vehicle_id
+  train: 0.70
+  validation: 0.15
+  test: 0.15
+  seed: 42
+
+normalization:
+  method: standard
+  fit_split: train
+  per_axis: true
