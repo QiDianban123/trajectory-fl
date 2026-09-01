@@ -37,6 +37,7 @@ def test_result_record_contains_canonical_metrics_and_artifact_fields() -> None:
     assert payload["run_id"] == "run-centralized"
     assert payload["code_sha"] == "abc123"
     assert payload["coordinate_unit"] == "meter"
+    assert payload["error"] is None
     assert payload["metrics"] == {"ade": 1.25, "fde": 2.5}
     assert payload["artifacts"] == {"trajectory": "figures/trajectory.png"}
 
@@ -57,6 +58,12 @@ def test_result_record_rejects_non_meter_or_invalid_mode() -> None:
         ResultRecord(**{**_record().__dict__, "coordinate_unit": "normalized"})
     with pytest.raises(ValueError, match="mode must be one"):
         ResultRecord(**{**_record().__dict__, "mode": "smoke"})
+    with pytest.raises(ValueError, match="failed result records"):
+        ResultRecord(**{**_record().__dict__, "status": "failed"})
+    failed = ResultRecord(
+        **{**_record().__dict__, "status": "failed", "error": "upload failed"}
+    )
+    assert failed.to_dict()["error"] == "upload failed"
 
 
 def test_visualizations_create_parent_directories_and_files(tmp_path: Path) -> None:

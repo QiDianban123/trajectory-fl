@@ -17,6 +17,7 @@ CSV_FIELDS = (
     "schema_version",
     "run_id",
     "status",
+    "error",
     "code_sha",
     "seed",
     "split_id",
@@ -47,6 +48,7 @@ class ResultRecord:
     total_seconds: float
     artifact_paths: Mapping[str, str] = field(default_factory=dict)
     status: str = "completed"
+    error: str | None = None
     dataset: str = "highd"
     model: str = "lstm_encoder_decoder"
     schema_version: int = 1
@@ -82,6 +84,10 @@ class ResultRecord:
             raise ValueError("metrics must use physical coordinates in meters")
         if self.status not in ("completed", "failed"):
             raise ValueError("status must be completed or failed")
+        if self.status == "completed" and self.error is not None:
+            raise ValueError("completed result records cannot contain an error")
+        if self.status == "failed" and (not isinstance(self.error, str) or not self.error.strip()):
+            raise ValueError("failed result records must contain a non-empty error")
         if not isinstance(self.artifact_paths, Mapping):
             raise ValueError("artifact_paths must be a mapping")
         if any(
@@ -104,6 +110,7 @@ class ResultRecord:
             "schema_version": self.schema_version,
             "run_id": self.run_id,
             "status": self.status,
+            "error": self.error,
             "code_sha": self.code_sha,
             "seed": self.seed,
             "split_id": self.split_id,
@@ -144,6 +151,7 @@ def write_csv(records: Iterable[ResultRecord], path: str | Path) -> Path:
                     "schema_version": record.schema_version,
                     "run_id": record.run_id,
                     "status": record.status,
+                    "error": record.error or "",
                     "code_sha": record.code_sha,
                     "seed": record.seed,
                     "split_id": record.split_id,

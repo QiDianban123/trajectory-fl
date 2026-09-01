@@ -1,8 +1,8 @@
 # 系统设计与 Day 2 接口基线
 
-**版本：** V1.0-D2-A<br>
+**版本：** V1.0-D2<br>
 **日期：** 2026-09-01<br>
-**状态：** A 已建立架构基线；标记为“待确认”的模块细节由 B—F 评审后冻结。
+**状态：** D2 设计评审通过；核心公共接口已冻结。
 
 ## 1. 设计目标与范围
 
@@ -90,7 +90,7 @@ Local-only 每个客户端必须使用全新模型实例和同一基线 state �
 
 `plot_trajectory`、`plot_convergence` 和 `plot_mode_comparison` 只负责绘图与路径创建，返回实际 `Path`，不负责训练、指标转换或结果删除。图表输出必须位于当前运行的 `figures/` 目录或其子路径。
 
-`ResultRecord` 是三种模式共享的结果事实对象，固定包含 `run_id`、`code_sha`、`seed`、`split_id`、`mode`、`sample_count`、`ade`、`fde`、`total_seconds`、`coordinate_unit` 和 artifact 路径。`write_json` 输出嵌套 `metrics`/`timing_seconds`/`artifacts`；`write_csv` 输出同一记录的扁平视图，字段顺序由 `CSV_FIELDS` 固定。JSON 是事实源，CSV 不得手工改写。
+`ResultRecord` 是三种模式共享的结果事实对象，固定包含 `run_id`、`code_sha`、`seed`、`split_id`、`mode`、`sample_count`、`ade`、`fde`、`total_seconds`、`coordinate_unit`、artifact 路径和可选 `error`。`write_json` 输出嵌套 `metrics`/`timing_seconds`/`artifacts`；`write_csv` 输出同一记录的扁平视图，字段顺序由 `CSV_FIELDS` 固定。completed 记录不得有 error，failed 记录必须有可定位 error。JSON 是事实源，CSV 不得手工改写。
 
 ## 4. 配置层级与校验
 
@@ -148,10 +148,10 @@ outputs/<run_id>/
   "dataset": "highd",
   "model": "lstm_encoder_decoder",
   "coordinate_unit": "meter",
-  "sample_count": 0,
+  "sample_count": 128,
   "metrics": {"ade": 0.0, "fde": 0.0},
   "timing_seconds": {"total": 0.0},
-  "artifacts": {"checkpoint": null, "figures": []},
+  "artifacts": {"checkpoint": "checkpoints/best.pt", "trajectory": "figures/example.png"},
   "error": null
 }
 ```
@@ -163,13 +163,13 @@ Local-only 可在顶层增加 `clients` 列表，但全局/宏平均与加权平
 每行代表一个可比较评价结果，固定列为：
 
 ```text
-schema_version,run_id,status,code_sha,seed,split_id,mode,dataset,model,
+schema_version,run_id,status,error,code_sha,seed,split_id,mode,dataset,model,
 sample_count,coordinate_unit,ade,fde,total_seconds,artifact_paths
 ```
 
-`scope` 取 `global` 或 `client`；非客户端行的 `client_id` 为空。JSON 是完整事实源，CSV 是扁平汇总视图，二者必须由同一记录对象生成。
+一条 `ResultRecord` 代表一个可比较的最终结果。D7—D11 再为 Local-only 的客户端级、宏平均和加权平均结果建立扩展记录；JSON 是完整事实源，CSV 是扁平汇总视图，二者必须由同一记录对象生成。
 
-## 8. 待 B—F 确认的接口
+## 8. 冻结接口与后续实现
 
 - B：highD 字段映射和 scaler 的最终落盘格式仍待 D3 实际数据探查；`meta`、split 安全和训练集 scaler 契约已确认。
 - C：绝对位置预测、Trainer 返回结构、float32/device 责任和 checkpoint envelope 已确认；D5 再实现 LSTM。

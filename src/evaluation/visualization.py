@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.evaluation.metrics import PHYSICAL_COORDINATE_UNIT, ade, fde
+from src.evaluation.result_store import ResultRecord
 
 
 def plot_trajectory(
@@ -65,14 +66,14 @@ def plot_convergence(
     return path
 
 
-def plot_mode_comparison(records: Sequence[object], output_path: str | Path) -> Path:
-    """Save ADE/FDE bars for records exposing ``mode``, ``ade`` and ``fde``."""
+def plot_mode_comparison(records: Sequence[ResultRecord], output_path: str | Path) -> Path:
+    """Save ADE/FDE bars for canonical result records."""
 
     if not records:
         raise ValueError("at least one result record is required")
-    modes = [getattr(record, "mode") for record in records]
-    ade_values = np.asarray([getattr(record, "ade") for record in records], dtype=float)
-    fde_values = np.asarray([getattr(record, "fde") for record in records], dtype=float)
+    modes = [record.mode for record in records]
+    ade_values = np.asarray([record.ade for record in records], dtype=float)
+    fde_values = np.asarray([record.fde for record in records], dtype=float)
     if len(set(modes)) != len(modes):
         raise ValueError("mode comparison requires at most one record per mode")
     if not np.isfinite(ade_values).all() or not np.isfinite(fde_values).all():
