@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,11 +27,15 @@ class LocalTrainingRequest:
 
 
 def run_local_only(trainer: Trainer, request: LocalTrainingRequest) -> FitResult:
-    """Delegate one local-only client to Trainer; no parameter sharing occurs here."""
+    """Delegate one client with an isolated copy of the shared initial state.
+
+    The experiment runner must also construct a fresh model instance per client.
+    A trained state must never become another client's initial state.
+    """
 
     return trainer.fit(
         request.model,
         request.train_batches,
         request.validation_batches,
-        initial_state=request.initial_state,
+        initial_state=deepcopy(request.initial_state),
     )

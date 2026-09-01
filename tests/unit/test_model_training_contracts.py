@@ -140,4 +140,6 @@ def test_centralized_and_local_only_reuse_one_trainer_interface() -> None:
     assert local.best_epoch == 0
     assert len(trainer.calls) == 2
     assert trainer.calls[0][3] is initial_state
-    assert trainer.calls[1][3] is initial_state
+    assert trainer.calls[1][3] is not initial_state
+    assert torch.equal(trainer.calls[1][3]["weight"], initial_state["weight"])
+    assert trainer.calls[1][3]["weight"].data_ptr() != initial_state["weight"].data_ptr()
