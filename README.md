@@ -51,6 +51,18 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 - 架构、Tensor、配置、输出目录和结果格式见 [D2 设计基线](docs/design.md)。
 - 运行产物包括 `metrics.json`、`metrics.csv`、`figures/` 和 `checkpoints/`；JSON 是结果事实源，CSV 是自动生成的扁平视图。
 
+## 质量与可复现性
+
+每次功能变更至少执行以下命令：
+
+```powershell
+python -m pytest -q
+python -m ruff check src tests
+python -m src.cli validate-config
+```
+
+运行入口应在创建模型、数据划分或训练前调用 `set_global_seed(seed)`。每个 run 使用唯一 `run_id`，其配置、元数据、JSON 日志、指标、检查点和图表保存在 `outputs/<run_id>/`；已存在的 run ID 会被拒绝，避免覆盖结果。
+
 ## D1 交付物映射
 
 | 成员 | D1 交付物 |
