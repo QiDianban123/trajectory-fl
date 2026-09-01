@@ -3,7 +3,7 @@ testpaths = ["tests"]
 # Tests import the repository package as `src.*`, so add the project root
 # instead of the `src` package directory itself.
 pythonpath = ["."]
-addopts = "-ra"
+addopts = "-ra --basetemp=.pytest-tmp"
 
 [tool.ruff]
 line-length = 100
