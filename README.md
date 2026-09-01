@@ -15,13 +15,33 @@
 py -3.10 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-pytest
+python -m pytest -q
 python -m src.cli status
 python -m src.cli validate-config
 python scripts\check_environment.py
 ```
 
 若尚未安装 Python，请先安装 Python 3.10 或更新版本，并重新打开终端。准备数据时，原始 highD CSV 放入 `data/raw/`；不要提交原始数据。
+
+## 再次进入虚拟环境（PowerShell）
+
+每次打开新的终端后，先进入仓库根目录，再激活已创建的 `.venv`：
+
+```powershell
+cd <仓库目录>
+.\.venv\Scripts\Activate.ps1
+python --version
+python -m pytest -q
+```
+
+命令提示符出现 `(.venv)` 即表示激活成功。若 PowerShell 阻止执行激活脚本，仅对当前终端临时放行后再激活：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+完成工作后可运行 `deactivate` 退出虚拟环境。始终使用 `python -m pytest`，以确保 pytest 使用当前 `.venv` 的解释器和依赖。
 
 ## D2 配置与命令契约
 

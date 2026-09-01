@@ -9,7 +9,9 @@ model:
   hidden_size: 64
   num_layers: 1
   dropout: 0.0
+  dtype: float32
   coordinate_representation: absolute_position
+  device_policy: trainer_managed
 
 training:
   loss: mse
@@ -17,3 +19,17 @@ training:
   learning_rate: 0.001
   batch_size: 32
   epochs: 1
+  initialization:
+    owner: experiment_runner
+    strategy: xavier_uniform
+    share_initial_state: true
+  checkpoint:
+    schema_version: 1
+    required_keys:
+      - schema_version
+      - model_state
+      - model_config
+      - seed
+      - epoch
+      - split_id
+      - metrics

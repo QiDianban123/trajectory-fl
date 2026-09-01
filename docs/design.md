@@ -66,12 +66,22 @@ P0 不使用变长序列或 mask；样本必须满足固定 `T_h/T_f`、有限�
 - `TrainingCoordinateScaler.fit(..., split="train")` 是唯一允许拟合统计量的入口；validation/test 只能调用 transform，评价层调用 inverse-transform。
 - zero-variance 坐标轴使用缩放值 1，防止 NaN/Inf；原始 mean/scale 与 `split_id` 一起保存。
 
+### 3.5 模型与通用训练契约（D2-C 确认）
+
+P0 预测模型的 `ModelContract` 固定为：输入 `history: torch.float32 [B, 75, 2]`、输出 `pred_future: torch.float32 [B, 125, 2]`，均为归一化后的二维绝对位置。模型必须保持输出与输入在同一 device，拒绝空 batch、错误 shape、错误 dtype 和 NaN/Inf；没有安装 PyTorch 时，模型/训练入口必须提示安装 `requirements.txt`，而不是在导入阶段产生难以定位的错误。
+
+模型只定义 `forward(history)` 与 `state_dict`/`load_state_dict` 序列化边界：不得读取文件、创建优化器、移动 batch 或计算指标。Trainer 是唯一可以创建优化器、设置 `train/eval`、移动 model/batch 和调用反向传播的组件。
+
+所有模式共享 `Trainer.fit(model, train_batches, validation_batches, initial_state=...)` 与 `Trainer.evaluate(model, batches)`。Centralized、Local-only 和未来 Federated 均只能委托该接口，不能复制训练循环。实验编排器以运行 seed 生成唯一初始 `state_dict`，保存该快照并向每种模式传入独立副本；Local-only 客户端之间不得共享训练后的参数。
+
+`FitResult` 返回每个 epoch 的 sample count、train/validation loss、best epoch 和 checkpoint payload；`EvaluationResult` 返回 sample count 与 loss。Checkpoint 必须包含 `schema_version`、`model_state`、`model_config`、`seed`、`epoch`、`split_id` 和 `metrics`，并由结果层与运行配置共同保存。
+
 ## 4. 配置层级与校验
 
 配置文件分为三层，均包含 `schema_version: 1`：
 
 1. `configs/data.yaml`：数据来源、列契约、坐标单位、序列长度、先分组切分策略、归一化与异常处理边界。
-2. `configs/model.yaml`：模型结构、Tensor 维度和最小训练默认值。
+2. `configs/model.yaml`：模型结构、Tensor dtype/设备责任、统一初始化和 checkpoint 默认约束。
 3. `configs/experiments/*.yaml`：run 名称、模式、seed、输出根目录、对数据/模型配置的引用和运行设备。
 
 加载顺序为 data -> model -> experiment。`src.utils.config.validate_config_bundle()` 必须拒绝缺文件、空 YAML、根节点非 mapping、未知 schema、非法范围，以及 data/model 的序列长度或坐标维度不一致。正式实验不得在代码中覆盖已保存的配置副本。
@@ -146,7 +156,7 @@ scope,client_id,aggregation,sample_count,coordinate_unit,ade,fde,total_seconds,e
 ## 8. 待 B—F 确认的接口
 
 - B：highD 字段映射和 scaler 的最终落盘格式仍待 D3 实际数据探查；`meta`、split 安全和训练集 scaler 契约已确认。
-- C：绝对位置或位移预测的最终选择、Trainer 返回结构、device/dtype 细节。
+- C：绝对位置预测、Trainer 返回结构、float32/device 责任和 checkpoint envelope 已确认；D5 再实现 LSTM。
 - D：客户端更新校验、非浮点 buffer 策略、联邦轮次统计结构。
 - E：Local-only 汇总字段、图表函数签名和 JSON/CSV 一致性实现。
 - F：`run_id` 生成、日志格式、路径安全、seed 覆盖范围和共享测试夹具。
