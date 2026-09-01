@@ -39,6 +39,8 @@ dataset:
   processed_dir: data/processed
   sample_dir: data/sample
   frame_rate_hz: 25
+  coordinate_system: highd_road_local
+  coordinate_unit: meter
   required_columns: [id, frame, x, y]
 sequence:
   history_steps: 75
@@ -46,7 +48,9 @@ sequence:
   stride: 1
   coordinate_dimension: 2
 split:
+  strategy: group_then_window
   group_by: vehicle_id
+  require_group_disjointness: true
   train: 0.7
   validation: 0.15
   test: 0.15
@@ -55,6 +59,13 @@ normalization:
   method: standard
   fit_split: test
   per_axis: true
+  statistics_artifact: scaler.npz
+preprocessing:
+  time_order: strict_increasing
+  missing_required_policy: reject_sample
+  nonfinite_coordinate_policy: reject_sample
+  duplicate_frame_policy: reject_track
+  minimum_track_frames: 200
 """.strip(),
         encoding="utf-8",
     )
