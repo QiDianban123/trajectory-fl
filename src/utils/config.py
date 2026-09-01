@@ -250,7 +250,9 @@ def _validate_model(config: Mapping[str, Any]) -> None:
             "hidden_size",
             "num_layers",
             "dropout",
+            "dtype",
             "coordinate_representation",
+            "device_policy",
         ),
     )
     if model["name"] != "lstm_encoder_decoder":
@@ -270,19 +272,61 @@ def _validate_model(config: Mapping[str, Any]) -> None:
     _positive_number(model["dropout"], "model.dropout", allow_zero=True)
     if not 0 <= model["dropout"] < 1:
         raise ConfigError("model.dropout must be in [0, 1)")
-    if model["coordinate_representation"] not in ("absolute_position", "displacement"):
-        raise ConfigError("unsupported model.coordinate_representation")
+    if model["dtype"] != "float32":
+        raise ConfigError("model.dtype must be float32")
+    if model["coordinate_representation"] != "absolute_position":
+        raise ConfigError("model.coordinate_representation must be absolute_position")
+    if model["device_policy"] != "trainer_managed":
+        raise ConfigError("model.device_policy must be trainer_managed")
 
     _require_keys(
         training,
         "training",
-        ("loss", "optimizer", "learning_rate", "batch_size", "epochs"),
+        (
+            "loss",
+            "optimizer",
+            "learning_rate",
+            "batch_size",
+            "epochs",
+            "initialization",
+            "checkpoint",
+        ),
     )
     if training["loss"] != "mse" or training["optimizer"] != "adam":
         raise ConfigError("P0 training loss/optimizer must be mse/adam")
     _positive_number(training["learning_rate"], "training.learning_rate")
     _positive_int(training["batch_size"], "training.batch_size")
     _positive_int(training["epochs"], "training.epochs")
+
+    initialization = _section(training, "initialization")
+    _require_keys(
+        initialization,
+        "training.initialization",
+        ("owner", "strategy", "share_initial_state"),
+    )
+    if initialization["owner"] != "experiment_runner":
+        raise ConfigError("training.initialization.owner must be experiment_runner")
+    if initialization["strategy"] != "xavier_uniform":
+        raise ConfigError("training.initialization.strategy must be xavier_uniform")
+    if initialization["share_initial_state"] is not True:
+        raise ConfigError("training.initialization.share_initial_state must be true")
+
+    checkpoint = _section(training, "checkpoint")
+    _require_keys(checkpoint, "training.checkpoint", ("schema_version", "required_keys"))
+    if checkpoint["schema_version"] != 1:
+        raise ConfigError("training.checkpoint.schema_version must be 1")
+    required_keys = checkpoint["required_keys"]
+    expected_keys = {
+        "schema_version",
+        "model_state",
+        "model_config",
+        "seed",
+        "epoch",
+        "split_id",
+        "metrics",
+    }
+    if not isinstance(required_keys, list) or set(required_keys) != expected_keys:
+        raise ConfigError("training.checkpoint.required_keys must match the checkpoint contract")
 
 
 def _validate_experiment(config: Mapping[str, Any]) -> None:
