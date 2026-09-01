@@ -1,6 +1,6 @@
 # D1 Backlog 与任务看板导出
 
-**快照日期：** 2026-08-31。状态：D1 工作完成，D2 工作待开始。每项任务进入开发前需使用 `.github/ISSUE_TEMPLATE/` 创建可追踪 Issue。
+**快照日期：** 2026-09-01。状态：D1—D2 工作完成，D3 工作待开始。每项任务进入开发前需使用 `.github/ISSUE_TEMPLATE/` 创建可追踪 Issue。
 
 | ID | 优先级 | 工作项 | 负责人 | 协作/评审 | 目标日 | 状态 |
 |---|---|---|---|---|---|---|
@@ -10,9 +10,9 @@
 | D1-D | P0 | Non-IID/FedAvg 草案及契约 | D | A | D1 | 完成 |
 | D1-E | P0 | ADE/FDE 与图表示例 | E | C | D1 | 完成 |
 | D1-F | P0 | 依赖、环境检查、pytest 骨架与测试计划 | F | B | D1 | 完成 |
-| D2-01 | P0 | 设计评审、接口冻结、配置/日志/夹具骨架 | A/F | 全员 | D2 | 待开始 |
-| D2-02 | P0 | DatasetAdapter 接口 | B | F | D2 | 待开始 |
-| D2-03 | P0 | 模型、Client、Aggregator、Metrics/Plot 接口评审 | C/D/E | A | D2 | 待开始 |
+| D2-01 | P0 | 设计评审、接口冻结、配置/日志/夹具骨架 | A/F | 全员 | D2 | 完成 |
+| D2-02 | P0 | DatasetAdapter 接口 | B | F | D2 | 完成 |
+| D2-03 | P0 | 模型、Client、Aggregator、Metrics/Plot 接口评审 | C/D/E | A | D2 | 完成 |
 | D3-10 | P0 | highD 字段映射与最小真实样例 | B | F | D3 | 待开始 |
 | D4-20 | P0 | 防泄漏切分、序列构造、Non-IID 划分 | B/D | F | D4 | 待开始 |
 | D5-30 | P0 | LSTM、Trainer、指标单测与小样本过拟合 | C/A/E | F | D5 | 待开始 |

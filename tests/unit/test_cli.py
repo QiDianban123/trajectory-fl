@@ -5,7 +5,7 @@ from src.cli import main
 
 def test_status_command(capsys: object) -> None:
     assert main(["status"]) == 0
-    assert "D2 architecture baseline ready" in capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "D2 design review complete" in capsys.readouterr().out  # type: ignore[attr-defined]
 
 
 def test_validate_default_config_bundle(capsys: object) -> None:

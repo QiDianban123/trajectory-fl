@@ -9,7 +9,6 @@ from typing import Any, Literal, TypeAlias
 
 from src.models.base import require_torch
 
-
 ModelState: TypeAlias = Mapping[str, Any]
 FailureStage = Literal["selection", "download", "local_train", "upload", "validation"]
 

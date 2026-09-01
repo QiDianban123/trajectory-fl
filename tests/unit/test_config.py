@@ -6,7 +6,6 @@ import pytest
 
 from src.utils.config import ConfigError, load_and_validate, validate_config_bundle
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 

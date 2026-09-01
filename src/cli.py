@@ -8,7 +8,6 @@ from pathlib import Path
 
 from src.utils.config import ConfigError, validate_config_bundle
 
-
 DEFAULT_DATA_CONFIG = Path("configs/data.yaml")
 DEFAULT_MODEL_CONFIG = Path("configs/model.yaml")
 DEFAULT_EXPERIMENT_CONFIG = Path("configs/experiments/smoke.yaml")
@@ -39,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "status":
-        print("D2 architecture baseline ready: highD selected; YAML contracts are available.")
+        print("D2 design review complete: highD selected; core interfaces are frozen for D3.")
         return 0
     if args.command == "validate-config":
         try:

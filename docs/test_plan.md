@@ -1,13 +1,27 @@
-# D1 测试计划
+# D2 测试计划
 
-**负责人：** F；**版本：** V1.0-D1。
+**负责人：** F；**版本：** V1.0-D2。
 
 ## 当前可执行测试
 
-- `tests/unit/test_metrics.py`：已知坐标的 ADE/FDE、形状不匹配、NaN 拒绝。
-- `tests/unit/test_cli.py`：D1 CLI 的状态入口。
+- `tests/unit/test_config.py`、`test_cli.py`：YAML schema、缺文件和 CLI 错误返回。
+- `tests/unit/test_data_contracts.py`：样本格式、先切分后滑窗、时间顺序与训练集 scaler。
+- `tests/unit/test_model_training_contracts.py`：CPU 模型 shape、checkpoint、共享 Trainer 与 Local-only 隔离。
+- `tests/unit/test_federated_contracts.py`：ClientUpdate、失败记录、state_dict、样本数与非浮点 buffer 策略。
+- `tests/unit/test_metrics.py`、`test_evaluation_contracts.py`：米制 ADE/FDE、JSON/CSV schema 与图表输出路径。
+- `tests/unit/test_utils.py`：固定随机源、路径逃逸拒绝、run 输出目录、结构化日志和共享夹具。
 
-运行：`pytest`。D1 环境若未安装 Python 或依赖，先按 README 安装；这属于环境前置条件，不应伪造测试通过结果。
+运行质量门禁：
+
+```powershell
+python -m pytest -q
+python -m ruff check src tests
+python -m src.cli validate-config
+```
+
+依赖版本由 `requirements.txt` 管理。测试报告只记录命令与结果，不记录设备路径、账户或其他机器专属信息。
+
+本次 D2 基线已验证 `python -m pytest -q` 与 `python -m src.cli validate-config`；Ruff 检查在安装 `requirements.txt` 中声明的 Ruff 后执行。该前置条件不影响 pytest 的结果记录。
 
 ## 后续测试挂钩
 
@@ -18,4 +32,4 @@
 | D7-D10 | 客户端隔离、FedAvg 人工数学用例、两客户端一轮集成、三模式冒烟 | AT-05、AT-06 |
 | D11-D15 | 小样本端到端、配置/缺文件错误、结果汇总重建 | AT-02、AT-07、AT-08 |
 
-每个新增核心函数必须包含正常、边界和异常用例；所有指标测试均使用反归一化物理坐标构造数据。
+每个新增核心函数必须包含正常、边界和异常用例；所有指标测试均使用反归一化物理坐标构造数据。pytest 的临时目录固定为仓库内 `.pytest-tmp/`，避免依赖系统临时目录权限。

@@ -9,7 +9,6 @@ from typing import Any, Literal, Protocol, TypedDict, runtime_checkable
 
 import numpy as np
 
-
 SplitName = Literal["train", "validation", "test"]
 CoordinateArray = np.ndarray
 

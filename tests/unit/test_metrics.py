@@ -6,7 +6,9 @@ import pytest
 from src.evaluation.metrics import ade, fde
 
 
-def test_ade_and_fde_on_known_coordinates(tiny_trajectory_pair: tuple[np.ndarray, np.ndarray]) -> None:
+def test_ade_and_fde_on_known_coordinates(
+    tiny_trajectory_pair: tuple[np.ndarray, np.ndarray],
+) -> None:
     prediction, truth = tiny_trajectory_pair
     assert ade(prediction, truth) == pytest.approx(2.5)
     assert fde(prediction, truth) == pytest.approx(5.0)
@@ -20,3 +22,8 @@ def test_metrics_reject_mismatched_shapes() -> None:
 def test_metrics_reject_nan() -> None:
     with pytest.raises(ValueError, match="finite"):
         fde(np.array([[float("nan"), 0.0]]), np.zeros((1, 2)))
+
+
+def test_metrics_require_physical_meter_coordinates() -> None:
+    with pytest.raises(ValueError, match="physical coordinates in meters"):
+        ade(np.zeros((1, 2)), np.zeros((1, 2)), coordinate_unit="normalized")
