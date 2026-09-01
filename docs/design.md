@@ -76,6 +76,14 @@ P0 预测模型的 `ModelContract` 固定为：输入 `history: torch.float32 [B
 
 `FitResult` 返回每个 epoch 的 sample count、train/validation loss、best epoch 和 checkpoint payload；`EvaluationResult` 返回 sample count 与 loss。Checkpoint 必须包含 `schema_version`、`model_state`、`model_config`、`seed`、`epoch`、`split_id` 和 `metrics`，并由结果层与运行配置共同保存。
 
+### 3.6 联邦接口契约（D2-D 确认）
+
+Client 接收带 round 与 `global_state_id` 的不可变下发请求，未来只通过共享 Trainer 完成本地训练，并返回一个 `ClientUpdate` 或显式 `ClientFailure`。Server 负责唯一客户端选择、可用性检查和“一名选中客户端对应一个结果”的完整性；失败不得静默跳过。
+
+聚合请求只接受 key、shape、dtype 与全局状态一致且浮点值有限的完整 `state_dict`。成功更新必须来自同一 round/全局状态，客户端 ID 唯一，`sample_count` 为实际有效训练样本数。D8 的 Aggregator 仅对浮点 Tensor 按 sample count 加权；所有非浮点 buffer 固定保留本轮全局值，避免整数/布尔值平均引起类型和取整歧义。D2 不提供 FedAvg 数值计算。
+
+Local-only 每个客户端必须使用全新模型实例和同一基线 state 的深拷贝；客户端训练结果不得成为其他客户端的初始状态。`run_local_only` 负责复制 state，实验编排器负责创建新模型。
+
 ## 4. 配置层级与校验
 
 配置文件分为三层，均包含 `schema_version: 1`：
@@ -157,6 +165,6 @@ scope,client_id,aggregation,sample_count,coordinate_unit,ade,fde,total_seconds,e
 
 - B：highD 字段映射和 scaler 的最终落盘格式仍待 D3 实际数据探查；`meta`、split 安全和训练集 scaler 契约已确认。
 - C：绝对位置预测、Trainer 返回结构、float32/device 责任和 checkpoint envelope 已确认；D5 再实现 LSTM。
-- D：客户端更新校验、非浮点 buffer 策略、联邦轮次统计结构。
+- D：Client/Server/Aggregator、失败记录、状态校验和 `preserve_global` 非浮点策略已确认；D8 再实现轮次与 FedAvg 数值计算。
 - E：Local-only 汇总字段、图表函数签名和 JSON/CSV 一致性实现。
 - F：`run_id` 生成、日志格式、路径安全、seed 覆盖范围和共享测试夹具。
