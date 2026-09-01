@@ -12,7 +12,6 @@ from typing import Literal, Protocol
 
 from src.evaluation.metrics import PHYSICAL_COORDINATE_UNIT, SUPPORTED_MODES
 
-
 ResultMode = Literal["centralized", "local_only", "federated"]
 CSV_FIELDS = (
     "schema_version",

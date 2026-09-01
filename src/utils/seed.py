@@ -8,7 +8,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-
 _MAX_NUMPY_SEED = 2**32 - 1
 
 

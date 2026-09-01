@@ -8,7 +8,6 @@ from typing import Any
 
 import yaml
 
-
 Config = dict[str, Any]
 SUPPORTED_KINDS = ("data", "model", "experiment")
 SUPPORTED_RUN_MODES = ("smoke", "centralized", "local_only", "federated")

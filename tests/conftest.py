@@ -8,7 +8,6 @@ import pytest
 
 from src.utils.config import load_yaml
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 

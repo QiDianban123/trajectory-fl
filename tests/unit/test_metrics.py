@@ -6,7 +6,9 @@ import pytest
 from src.evaluation.metrics import ade, fde
 
 
-def test_ade_and_fde_on_known_coordinates(tiny_trajectory_pair: tuple[np.ndarray, np.ndarray]) -> None:
+def test_ade_and_fde_on_known_coordinates(
+    tiny_trajectory_pair: tuple[np.ndarray, np.ndarray],
+) -> None:
     prediction, truth = tiny_trajectory_pair
     assert ade(prediction, truth) == pytest.approx(2.5)
     assert fde(prediction, truth) == pytest.approx(5.0)

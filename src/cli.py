@@ -8,7 +8,6 @@ from pathlib import Path
 
 from src.utils.config import ConfigError, validate_config_bundle
 
-
 DEFAULT_DATA_CONFIG = Path("configs/data.yaml")
 DEFAULT_MODEL_CONFIG = Path("configs/model.yaml")
 DEFAULT_EXPERIMENT_CONFIG = Path("configs/experiments/smoke.yaml")

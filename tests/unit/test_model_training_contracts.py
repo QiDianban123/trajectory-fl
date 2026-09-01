@@ -24,7 +24,6 @@ from src.training.trainer import (
     TrajectoryBatch,
 )
 
-
 CONTRACT = ModelContract(history_steps=2, future_steps=3)
 
 

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
 import numpy as np
 
 from src.data.adapters import SplitName
-
 
 GroupKey = Literal["vehicle_id", "scenario_id"]
 _VALID_SPLITS = {"train", "validation", "test"}
