@@ -11,3 +11,4 @@ data/processed/*
 !data/processed/.gitkeep
 *.pt
 *.log
+.DS_Store
