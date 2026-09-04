@@ -10,12 +10,16 @@ from __future__ import annotations
 import pytest
 
 from src.data.partition import (
+    ClientPartition,
     GroupExtent,
     PartitionConfig,
     PartitionError,
+    PartitionManifest,
     RegionIndex,
     build_group_index,
+    check_partition_invariants,
     equal_width_edges,
+    partition_train_groups,
     region_occupancy,
 )
 
@@ -194,3 +198,155 @@ def test_region_occupancy_reports_empty_regions_without_error() -> None:
     groups = [_group(101, 1.0, 2.0), _group(102, 9.0, 10.0)]
     index = RegionIndex.from_edges([0.0, 2.0, 4.0, 6.0, 8.0, 10.0])
     assert region_occupancy(groups, index) == (1, 0, 0, 0, 1)
+
+
+# --- Day 4: Non-IID assignment, merging, statistics and manifest ------------
+
+
+def _spread_groups() -> list[GroupExtent]:
+    """Ten groups whose midpoints 5..95 fill five equal-width 20 m bands."""
+    return [
+        _group(group_id, midpoint - 5.0, midpoint + 5.0, sample_count=6)
+        for group_id, midpoint in enumerate(range(5, 100, 10), start=1)
+    ]
+
+
+def test_partition_assigns_every_group_to_exactly_one_client() -> None:
+    groups = _spread_groups()
+    manifest = partition_train_groups(groups, PartitionConfig(num_clients=5))
+    assert manifest.num_clients == 5
+    assert [client.client_id for client in manifest.clients] == [
+        "rsu_01",
+        "rsu_02",
+        "rsu_03",
+        "rsu_04",
+        "rsu_05",
+    ]
+    expected = {group_id: f"rsu_{((group_id - 1) // 2) + 1:02d}" for group_id in range(1, 11)}
+    assert manifest.assignment == expected
+    check_partition_invariants(manifest, groups)
+    assert manifest.totals() == (10, 60)
+
+
+def test_partition_merges_adjacent_small_region_into_smaller_neighbour() -> None:
+    config = PartitionConfig(
+        num_clients=3, region_edges=(0.0, 10.0, 20.0, 30.0), min_samples_per_client=30
+    )
+    groups = (
+        [_group(group_id, group_id * 1.5, group_id * 1.5 + 1.0, sample_count=6)
+         for group_id in range(1, 6)]
+        + [_group(6, 11.0, 19.0, sample_count=5)]
+        + [_group(7 + offset, 21.0 + offset, 22.0 + offset, sample_count=10)
+           for offset in range(4)]
+    )
+    manifest = partition_train_groups(groups, config)
+    assert manifest.num_clients == 2
+    first, second = manifest.clients
+    assert (first.client_id, first.x_min, first.x_max, first.sample_count) == (
+        "rsu_01",
+        0.0,
+        20.0,
+        35,
+    )
+    assert (second.client_id, second.x_min, second.x_max, second.sample_count) == (
+        "rsu_02",
+        20.0,
+        30.0,
+        40,
+    )
+    assert all(client.sample_count >= config.min_samples_per_client for client in manifest.clients)
+    assert manifest.totals() == (10, 75)
+    check_partition_invariants(manifest, groups)
+
+
+def test_partition_dissolves_empty_regions_without_empty_clients() -> None:
+    config = PartitionConfig(num_clients=3, region_edges=(0.0, 10.0, 20.0, 30.0))
+    groups = [_group(1, 1.0, 2.0, 6), _group(2, 3.0, 4.0, 6), _group(3, 21.0, 22.0, 12)]
+    manifest = partition_train_groups(groups, config)
+    assert manifest.num_clients == 2  # empty middle band merged into rsu_01
+    assert manifest.totals() == (3, 24)
+    assert all(client.group_ids for client in manifest.clients)
+    check_partition_invariants(manifest, groups)
+
+
+def test_partition_rejects_groups_outside_explicit_region_edges() -> None:
+    config = PartitionConfig(num_clients=4, region_edges=(0.0, 10.0, 20.0, 30.0, 40.0))
+    with pytest.raises(PartitionError, match="outside the configured region edges"):
+        partition_train_groups([_group(1, 50.0, 60.0)], config)
+
+
+def test_partition_handles_zero_width_extent_as_single_client() -> None:
+    groups = [_group(1, 50.0, 50.0, 4), _group(2, 50.0, 50.0, 4), _group(3, 50.0, 50.0, 4)]
+    manifest = partition_train_groups(groups, PartitionConfig(num_clients=5))
+    assert manifest.num_clients == 1
+    assert manifest.clients[0].client_id == "rsu_01"
+    assert manifest.region_edges == (50.0, 50.0)
+    assert manifest.totals() == (3, 12)
+    check_partition_invariants(manifest, groups)
+
+
+def test_vehicle_midpoint_on_region_boundary_belongs_to_right_client() -> None:
+    config = PartitionConfig(num_clients=4, region_edges=(0.0, 10.0, 20.0, 30.0, 40.0))
+    groups = [_group(1, 19.0, 21.0, 10), _group(2, 2.0, 3.0, 10), _group(3, 35.0, 36.0, 10)]
+    manifest = partition_train_groups(groups, config)
+    assert manifest.assignment[1] == "rsu_02"
+    assert manifest.assignment[2] == "rsu_01"
+    assert manifest.assignment[3] == "rsu_03"
+    middle = manifest.clients[1]
+    assert (middle.x_min, middle.x_max) == (20.0, 30.0)
+    check_partition_invariants(manifest, groups)
+
+
+def test_partition_rebuilds_identically_regardless_of_input_order() -> None:
+    groups = _spread_groups()
+    config = PartitionConfig(num_clients=5)
+    first = partition_train_groups(groups, config)
+    second = partition_train_groups(list(reversed(groups)), config)
+    third = partition_train_groups(groups, config)
+    assert first == second
+    assert first == third
+    assert first.to_mapping() == second.to_mapping()
+
+
+def test_manifest_mapping_reports_clients_and_statistics() -> None:
+    manifest = partition_train_groups(_spread_groups(), PartitionConfig(num_clients=5))
+    payload = manifest.to_mapping()
+    assert payload["schema_version"] == 1
+    assert payload["num_clients_requested"] == 5
+    assert payload["num_clients"] == 5
+    assert len(payload["region_edges"]) == 6
+    assert [client["vehicle_count"] for client in payload["clients"]] == [2] * 5
+    assert sum(client["sample_count"] for client in payload["clients"]) == 60
+    assert all(len(client["group_ids"]) == client["vehicle_count"] for client in payload["clients"])
+
+
+def test_partition_rejects_empty_train_group_sets() -> None:
+    with pytest.raises(PartitionError, match="at least one train group"):
+        partition_train_groups([], PartitionConfig())
+
+
+def test_partition_invariants_reject_incomplete_foreign_or_wrong_counts() -> None:
+    groups = [_group(1, 0.0, 5.0, 4), _group(2, 6.0, 9.0, 5)]
+    manifest = partition_train_groups(
+        groups, PartitionConfig(num_clients=2, region_edges=(0.0, 5.0, 10.0))
+    )
+    check_partition_invariants(manifest, groups)
+
+    with pytest.raises(PartitionError, match="incomplete"):
+        check_partition_invariants(manifest, groups[:1])
+
+    foreign = PartitionManifest(
+        num_clients_requested=1,
+        region_edges=(0.0, 10.0),
+        clients=(ClientPartition("rsu_01", 0.0, 10.0, 9, (1, 2, 999)),),
+    )
+    with pytest.raises(PartitionError, match="not present"):
+        check_partition_invariants(foreign, groups)
+
+    wrong_count = PartitionManifest(
+        num_clients_requested=1,
+        region_edges=(0.0, 10.0),
+        clients=(ClientPartition("rsu_01", 0.0, 10.0, 99, (1, 2)),),
+    )
+    with pytest.raises(PartitionError, match="does not match"):
+        check_partition_invariants(wrong_count, groups)

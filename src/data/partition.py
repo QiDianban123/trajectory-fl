@@ -271,3 +271,305 @@ def region_occupancy(
     for group in groups:
         counts[region_index.region_for_coordinate(group.midpoint)] += 1
     return tuple(counts)
+
+
+# --- Day 4: assignment, adjacent-region merge, statistics and manifest -------
+
+
+@dataclass(frozen=True)
+class ClientPartition:
+    """One spatial client: its train groups, coverage and sample statistics."""
+
+    client_id: str
+    x_min: float
+    x_max: float
+    sample_count: int
+    group_ids: tuple[str | int, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.client_id, str) or not self.client_id.strip():
+            raise PartitionError("client_id must be a non-empty string")
+        _validate_finite_number(self.x_min, "x_min")
+        _validate_finite_number(self.x_max, "x_max")
+        if self.x_min > self.x_max:
+            raise PartitionError("x_min must be less than or equal to x_max")
+        if (
+            isinstance(self.sample_count, bool)
+            or not isinstance(self.sample_count, int)
+            or self.sample_count < 0
+        ):
+            raise PartitionError("sample_count must be a non-negative integer")
+        if not isinstance(self.group_ids, tuple) or not self.group_ids:
+            raise PartitionError("group_ids must be a non-empty tuple")
+        seen: set[str | int] = set()
+        for group_id in self.group_ids:
+            if isinstance(group_id, bool) or not isinstance(group_id, (str, int)):
+                raise PartitionError("group_ids entries must be strings or integers")
+            if isinstance(group_id, str) and not group_id.strip():
+                raise PartitionError("group_ids entries must be non-empty strings")
+            if group_id in seen:
+                raise PartitionError(f"duplicate group {group_id!r} inside one client")
+            seen.add(group_id)
+
+
+@dataclass(frozen=True)
+class PartitionManifest:
+    """Rebuildable partition manifest for the train split (F4 / AT-04).
+
+    ``region_edges`` are the requested pre-merge region edges; every
+    :class:`ClientPartition` carries its own post-merge coverage. The object
+    is a pure function of the input group set and config: the same inputs
+    always rebuild byte-for-byte identical manifests.
+    """
+
+    region_edges: tuple[float, ...]
+    clients: tuple[ClientPartition, ...]
+    schema_version: int = MANIFEST_SCHEMA_VERSION
+    axis: Axis = "x"
+    num_clients_requested: int = 5
+
+    def __post_init__(self) -> None:
+        if self.schema_version != MANIFEST_SCHEMA_VERSION:
+            raise PartitionError(f"manifest schema_version must be {MANIFEST_SCHEMA_VERSION}")
+        if self.axis not in _SUPPORTED_AXES:
+            raise PartitionError(f"axis must be one of {_SUPPORTED_AXES}")
+        if (
+            isinstance(self.num_clients_requested, bool)
+            or not isinstance(self.num_clients_requested, int)
+            or self.num_clients_requested < 1
+        ):
+            raise PartitionError("num_clients_requested must be a positive integer")
+        if not isinstance(self.clients, tuple) or not self.clients:
+            raise PartitionError("manifest must contain at least one client")
+        _validate_manifest_edges(self.region_edges)
+        client_ids: set[str] = set()
+        previous_x_max: float | None = None
+        for client in self.clients:
+            if client.client_id in client_ids:
+                raise PartitionError(f"duplicate client_id {client.client_id!r} in manifest")
+            client_ids.add(client.client_id)
+            if previous_x_max is not None and client.x_min < previous_x_max:
+                raise PartitionError("manifest clients must be ordered by x_min")
+            previous_x_max = client.x_max
+        all_group_ids: set[str | int] = set()
+        for client in self.clients:
+            for group_id in client.group_ids:
+                if group_id in all_group_ids:
+                    raise PartitionError(f"group {group_id!r} appears in more than one client")
+                all_group_ids.add(group_id)
+
+    @property
+    def num_clients(self) -> int:
+        return len(self.clients)
+
+    @property
+    def assignment(self) -> dict[str | int, str]:
+        """Map every train group to the single client that owns it."""
+        mapping: dict[str | int, str] = {}
+        for client in self.clients:
+            for group_id in client.group_ids:
+                mapping[group_id] = client.client_id
+        return mapping
+
+    def totals(self) -> tuple[int, int]:
+        """Return the total number of vehicles and of train windows."""
+        vehicle_count = sum(len(client.group_ids) for client in self.clients)
+        sample_count = sum(client.sample_count for client in self.clients)
+        return vehicle_count, sample_count
+
+    def to_mapping(self) -> dict[str, object]:
+        """JSON-serializable manifest payload for the experiment run context."""
+        return {
+            "schema_version": self.schema_version,
+            "axis": self.axis,
+            "num_clients_requested": self.num_clients_requested,
+            "num_clients": self.num_clients,
+            "region_edges": list(self.region_edges),
+            "clients": [
+                {
+                    "client_id": client.client_id,
+                    "x_min": client.x_min,
+                    "x_max": client.x_max,
+                    "vehicle_count": len(client.group_ids),
+                    "sample_count": client.sample_count,
+                    "group_ids": list(client.group_ids),
+                }
+                for client in self.clients
+            ],
+        }
+
+
+def partition_train_groups(
+    groups: Iterable[GroupExtent], config: PartitionConfig
+) -> PartitionManifest:
+    """Assign train groups to spatial Non-IID clients (F4 / AT-04).
+
+    Each group is anchored at its longitudinal midpoint and assigned to the
+    region that contains it, so one vehicle never spans two clients and no
+    sample is copied to pad a region. Regions whose total sample count is
+    below ``config.min_samples_per_client`` are merged into the adjacent
+    region with the smaller sample count (ties go left); empty regions are
+    dissolved the same way and never appear as empty clients. The result is
+    deterministic: it depends only on the group set and the config.
+    """
+
+    ordered = build_group_index(groups)
+    if not ordered:
+        raise PartitionError("at least one train group is required for client partition")
+    requested = config.num_clients
+    prefix = config.client_id_prefix
+    x_lo = ordered[0].x_min
+    x_hi = ordered[-1].x_max
+
+    edges = config.region_edges
+    degenerate = False
+    if edges is None:
+        if x_hi > x_lo:
+            edges = equal_width_edges(x_lo, x_hi, requested)
+        else:
+            degenerate = True
+            edges = (x_lo, x_hi)
+    elif x_lo < edges[0] or x_hi > edges[-1]:
+        raise PartitionError(
+            f"group longitudinal extent [{x_lo}, {x_hi}] lies outside the configured "
+            f"region edges [{edges[0]}, {edges[-1]}]"
+        )
+
+    if degenerate:
+        group_ids = tuple(group.group_id for group in ordered)
+        sample_count = sum(group.sample_count for group in ordered)
+        client = ClientPartition(
+            client_id=_make_client_id(1, requested, prefix),
+            x_min=x_lo,
+            x_max=x_hi,
+            sample_count=sample_count,
+            group_ids=group_ids,
+        )
+        return PartitionManifest(
+            num_clients_requested=requested, region_edges=edges, clients=(client,)
+        )
+
+    region_index = RegionIndex.from_edges(edges, axis=config.axis)
+    buckets = [
+        {"x_min": float(low), "x_max": float(high), "sample_count": 0, "groups": []}
+        for low, high in (
+            region_index.region_bounds(region) for region in range(region_index.num_regions)
+        )
+    ]
+    for group in ordered:
+        region = region_index.region_for_coordinate(group.midpoint)
+        bucket = buckets[region]
+        bucket["groups"].append(group)
+        bucket["sample_count"] += group.sample_count
+
+    minimum = config.min_samples_per_client
+    while len(buckets) > 1:
+        target = next(
+            (index for index, bucket in enumerate(buckets) if bucket["sample_count"] < minimum),
+            None,
+        )
+        if target is None:
+            break
+        left = target - 1 if target > 0 else None
+        right = target + 1 if target < len(buckets) - 1 else None
+        if left is None:
+            neighbour = right
+        elif right is None:
+            neighbour = left
+        elif buckets[left]["sample_count"] <= buckets[right]["sample_count"]:
+            neighbour = left
+        else:
+            neighbour = right
+        low, high = sorted((target, neighbour))
+        buckets.append(
+            {
+                "x_min": min(buckets[low]["x_min"], buckets[high]["x_min"]),
+                "x_max": max(buckets[low]["x_max"], buckets[high]["x_max"]),
+                "sample_count": buckets[low]["sample_count"] + buckets[high]["sample_count"],
+                "groups": buckets[low]["groups"] + buckets[high]["groups"],
+            }
+        )
+        del buckets[high]
+        del buckets[low]
+        buckets.sort(key=lambda bucket: bucket["x_min"])
+
+    clients: list[ClientPartition] = []
+    for ordinal, bucket in enumerate(buckets, start=1):
+        group_ids = tuple(sorted(bucket["groups"], key=_group_sort_key))
+        clients.append(
+            ClientPartition(
+                client_id=_make_client_id(ordinal, requested, prefix),
+                x_min=bucket["x_min"],
+                x_max=bucket["x_max"],
+                sample_count=bucket["sample_count"],
+                group_ids=tuple(group.group_id for group in group_ids),
+            )
+        )
+    return PartitionManifest(
+        num_clients_requested=requested, region_edges=edges, clients=tuple(clients)
+    )
+
+
+def check_partition_invariants(
+    manifest: PartitionManifest, groups: Iterable[GroupExtent]
+) -> None:
+    """Verify the F4 acceptance invariants on one partition result.
+
+    Checks that every input train group appears in exactly one client, no
+    foreign or duplicated group is present, clients are non-empty with
+    consistent ids, and sample totals match the input windows.
+    """
+
+    ordered = build_group_index(groups)
+    input_groups = {group.group_id: group for group in ordered}
+    assigned: dict[str | int, str] = {}
+    client_ids: set[str] = set()
+    for client in manifest.clients:
+        if client.client_id in client_ids:
+            raise PartitionError(f"duplicate client_id {client.client_id!r} in manifest")
+        client_ids.add(client.client_id)
+        if not client.group_ids:
+            raise PartitionError(f"client {client.client_id!r} has no groups")
+        client_sample_count = 0
+        for group_id in client.group_ids:
+            if group_id in assigned:
+                raise PartitionError(f"group {group_id!r} appears in more than one client")
+            if group_id not in input_groups:
+                raise PartitionError(
+                    f"group {group_id!r} is not present in the input train groups"
+                )
+            assigned[group_id] = client.client_id
+            client_sample_count += input_groups[group_id].sample_count
+        if client.sample_count != client_sample_count:
+            raise PartitionError(
+                f"client {client.client_id!r} sample_count {client.sample_count} does not "
+                f"match its groups' total {client_sample_count}"
+            )
+    missing = sorted(set(input_groups) - set(assigned), key=repr)
+    if missing:
+        raise PartitionError(f"client union is incomplete; missing groups: {missing}")
+
+
+def _validate_manifest_edges(edges: Sequence[float]) -> None:
+    """Validate manifest edges; a degenerate single-region manifest may repeat."""
+    if len(edges) < 2:
+        raise PartitionError("region_edges must contain at least two edges")
+    strictly_increasing = True
+    previous = None
+    for index, edge in enumerate(edges):
+        _validate_finite_number(edge, f"region_edges[{index}]")
+        current = float(edge)
+        if previous is not None:
+            if current < previous:
+                raise PartitionError("region_edges must be non-decreasing")
+            if current <= previous:
+                strictly_increasing = False
+        previous = current
+    if len(edges) > 2 and not strictly_increasing:
+        raise PartitionError("region_edges must be strictly increasing")
+
+
+def _make_client_id(ordinal: int, num_clients: int, prefix: str) -> str:
+    """Format a 1-based ``rsu_<NN>`` identifier with a stable width."""
+    width = _client_id_width(num_clients)
+    return f"{prefix}{ordinal:0{width}d}"
