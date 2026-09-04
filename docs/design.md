@@ -110,7 +110,7 @@ Local-only 每个客户端必须使用全新模型实例和同一基线 state �
 | `validate-config` | 加载并校验 data/model/experiment 配置；失败返回 2 | A/F |
 | `prepare-data` | 明确返回“尚未实现”和退出码 2 | B/A，D3 |
 | `train` | 明确返回“尚未实现”和退出码 2 | A/C/D，D6—D10 |
-| `compare` | 明确返回“尚未实现”和退出码 2 | E/A，D11—D13 |
+| `compare` | 明确返回“尚未实现”和退出码 2 | E/A/G，S4（D9—D10） |
 
 CLI 成功返回 0，可定位的用户配置/未实现错误返回 2；内部不可恢复异常不得伪装为成功。
 
@@ -167,12 +167,12 @@ schema_version,run_id,status,error,code_sha,seed,split_id,mode,dataset,model,
 sample_count,coordinate_unit,ade,fde,total_seconds,artifact_paths
 ```
 
-一条 `ResultRecord` 代表一个可比较的最终结果。D7—D11 再为 Local-only 的客户端级、宏平均和加权平均结果建立扩展记录；JSON 是完整事实源，CSV 是扁平汇总视图，二者必须由同一记录对象生成。
+一条 `ResultRecord` 代表一个可比较的最终结果。S3—S4（D7—D10）再为 Local-only 的客户端级、宏平均和加权平均结果建立扩展记录；JSON 是完整事实源，CSV 是扁平汇总视图，二者必须由同一记录对象生成。
 
 ## 8. 冻结接口与后续实现
 
 - B：highD 字段映射和 scaler 的最终落盘格式仍待 D3 实际数据探查；`meta`、split 安全和训练集 scaler 契约已确认。
 - C：绝对位置预测、Trainer 返回结构、float32/device 责任和 checkpoint envelope 已确认；D5 再实现 LSTM。
 - D：Client/Server/Aggregator、失败记录、状态校验和 `preserve_global` 非浮点策略已确认；D8 再实现轮次与 FedAvg 数值计算。
-- E：Local-only 汇总字段、图表函数签名和 JSON/CSV 一致性实现已确认；正式实验汇总在 D11—D13 生成。
+- E：Local-only 汇总字段、图表函数签名和 JSON/CSV 一致性实现已确认；正式实验汇总在 S4（D9—D10）生成。
 - F：`run_id` 生成、日志格式、路径安全、seed 覆盖范围和共享测试夹具。
