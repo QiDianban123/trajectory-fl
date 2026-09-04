@@ -5,6 +5,7 @@
 **用途：** 供 A/F 评审 S1-D-01 收尾增量（MS2 数据闭环证据之一）；供 成员⑥ 归档过程材料。
 **对应任务卡：** `docs/S1_D3-D4/D.md`「S1-D-01：5-RSU Non-IID 划分」→ **D4 收尾（S1-D-01 完成）**。
 **工作分支：** `feature/s1-d-noniid-partition`　**本日提交：** `520e896`（D3 提交 `5c53dcf`、`88f0413` 为前置）
+**推送状态：** ⏳ 本沙箱无外网（SSH 被禁），本地提交已就绪但**尚未推送**；请在成员环境执行 `git push -u origin feature/s1-d-noniid-partition` 后创建指向 `dev` 的 MR（见 02 号 AI 文档 OP-08）。
 
 ## 文件清单
 
@@ -36,7 +37,7 @@
 |---|---|---|
 | `python -m py_compile`（全部新增/改动 .py） | ✅ 通过 | 语法级验证 |
 | 纯标准库冒烟（分配/合并/不变式/示例 manifest） | ✅ 通过 | 本机无第三方依赖 |
-| `python -m pytest -q` | ⏸ 环境受限 | 无依赖且网络不可达；预计新增 32 项测试（partition 29 + config 3），留待成员环境复跑 |
+| `python -m pytest -q` | ⏸ 环境受限 | 无依赖且网络不可达；预计新增 31 项测试（partition 29 + config 2），留待成员环境复跑 |
 | `python -m ruff check src tests` | ⏸ 环境受限 | 同上 |
 | `python -m src.cli validate-config` | ⏸ 环境受限 | 同上 |
 
