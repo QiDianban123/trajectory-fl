@@ -233,6 +233,9 @@ def _validate_data(config: Mapping[str, Any]) -> None:
             raise ConfigError(f"preprocessing.{key} must be {expected}")
     _positive_int(preprocessing["minimum_track_frames"], "preprocessing.minimum_track_frames")
 
+    partition = config.get("partition")
+    if partition is None:
+        raise ConfigError("data config is missing the required 'partition' section")
     _validate_partition(_section(config, "partition"))
 
 

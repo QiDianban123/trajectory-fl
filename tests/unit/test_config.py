@@ -87,7 +87,7 @@ preprocessing:
 def test_data_config_requires_partition_section() -> None:
     config = load_yaml(PROJECT_ROOT / "configs/data.yaml")
     del config["partition"]
-    with pytest.raises(ConfigError, match="partition is missing required keys"):
+    with pytest.raises(ConfigError, match="missing the required 'partition'"):
         validate_config(config, "data")
 
 

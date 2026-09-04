@@ -333,7 +333,9 @@ def test_partition_invariants_reject_incomplete_foreign_or_wrong_counts() -> Non
     check_partition_invariants(manifest, groups)
 
     with pytest.raises(PartitionError, match="incomplete"):
-        check_partition_invariants(manifest, groups[:1])
+        # "incomplete" means an input train group is absent from the union;
+        # a group present only in the manifest is caught as foreign instead.
+        check_partition_invariants(manifest, groups + [_group(3, 20.0, 25.0, 3)])
 
     foreign = PartitionManifest(
         num_clients_requested=1,
