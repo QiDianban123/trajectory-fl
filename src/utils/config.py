@@ -233,6 +233,51 @@ def _validate_data(config: Mapping[str, Any]) -> None:
             raise ConfigError(f"preprocessing.{key} must be {expected}")
     _positive_int(preprocessing["minimum_track_frames"], "preprocessing.minimum_track_frames")
 
+    partition = config.get("partition")
+    if partition is None:
+        raise ConfigError("data config is missing the required 'partition' section")
+    _validate_partition(_section(config, "partition"))
+
+
+def _validate_partition(partition: Mapping[str, Any]) -> None:
+    """Validate the spatial Non-IID client partition schema (S1-D-01)."""
+
+    _require_keys(
+        partition,
+        "partition",
+        (
+            "num_clients",
+            "axis",
+            "client_id_prefix",
+            "region_edges",
+            "min_samples_per_client",
+        ),
+    )
+    _positive_int(partition["num_clients"], "partition.num_clients")
+    if partition["axis"] != "x":
+        raise ConfigError("partition.axis must be 'x' (road longitudinal axis)")
+    _non_empty_string(partition["client_id_prefix"], "partition.client_id_prefix")
+    _positive_int(partition["min_samples_per_client"], "partition.min_samples_per_client")
+
+    num_clients = partition["num_clients"]
+    region_edges = partition["region_edges"]
+    if region_edges is None:
+        return
+    if not isinstance(region_edges, list):
+        raise ConfigError("partition.region_edges must be a list of numbers or null")
+    if len(region_edges) != num_clients + 1:
+        raise ConfigError(
+            "partition.region_edges must contain exactly num_clients + 1 "
+            f"edges ({num_clients + 1}), got {len(region_edges)}"
+        )
+    previous = None
+    for index, edge in enumerate(region_edges):
+        if isinstance(edge, bool) or not isinstance(edge, (int, float)):
+            raise ConfigError(f"partition.region_edges[{index}] must be a number")
+        if previous is not None and edge <= previous:
+            raise ConfigError("partition.region_edges must be strictly increasing")
+        previous = edge
+
 
 def _validate_model(config: Mapping[str, Any]) -> None:
     model = _section(config, "model")
