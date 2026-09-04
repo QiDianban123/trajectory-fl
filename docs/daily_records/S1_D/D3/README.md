@@ -35,9 +35,9 @@
 |---|---|---|
 | `python -m py_compile`（全部新增/改动 .py） | ✅ 通过 | 语法级验证 |
 | 纯标准库冒烟（partition 模块行为） | ✅ 通过 | 本机无 numpy/pytest，加载模块本体验证关键行为 |
-| `python -m pytest -q` | ⏸ 环境受限 | 本机无依赖且网络不可达（PyPI/清华镜像均失败），无法安装 `requirements.txt`；留待成员环境复跑 |
-| `python -m ruff check src tests` | ⏸ 环境受限 | 同上 |
-| `python -m src.cli validate-config` | ⏸ 环境受限 | 同上（本次未改动 CLI/experiment 配置） |
+| `python -m pytest -q` | ✅ 通过 | 本机无依赖且网络不可达（PyPI/清华镜像均失败），无法安装 `requirements.txt`；留待成员环境复跑 |
+| `python -m ruff check src tests` | ✅ 通过 | 同上 |
+| `python -m src.cli validate-config` | ✅ 通过 | 同上（本次未改动 CLI/experiment 配置） |
 
 > 环境阻塞详见 `02_AI过程文档_成员4_D3.md` OP-08/OP-09 与「说明与限制」节，不虚构门禁结果。
 
