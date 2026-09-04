@@ -37,7 +37,7 @@
 |---|---|---|
 | `python -m py_compile`（全部新增/改动 .py） | ✅ 通过 | 语法级验证 |
 | 纯标准库冒烟（分配/合并/不变式/示例 manifest） | ✅ 通过 | 本机无第三方依赖 |
-| `python -m pytest -q` | ⏸ 环境受限 | 无依赖且网络不可达；预计新增 31 项测试（partition 29 + config 2），留待成员环境复跑 |
+| `python -m pytest -q` | ⏸→修复中 | 成员环境已复跑：69 通过 / 2 失败（断言/文案不匹配，QA-D4-05/06 已修复），修复后预计 71 项待复跑确认 |
 | `python -m ruff check src tests` | ⏸ 环境受限 | 同上 |
 | `python -m src.cli validate-config` | ⏸ 环境受限 | 同上 |
 
