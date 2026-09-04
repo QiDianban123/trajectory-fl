@@ -99,7 +99,8 @@ def test_partition_region_edges_schema_is_validated() -> None:
         validate_config(wrong_length, "data")
 
     unordered = dict(base)
-    unordered["partition"] = dict(base["partition"], region_edges=[0.0, 30.0, 20.0, 40.0, 50.0, 60.0])
+    bad_edges = [0.0, 30.0, 20.0, 40.0, 50.0, 60.0]
+    unordered["partition"] = dict(base["partition"], region_edges=bad_edges)
     with pytest.raises(ConfigError, match="strictly increasing"):
         validate_config(unordered, "data")
 
