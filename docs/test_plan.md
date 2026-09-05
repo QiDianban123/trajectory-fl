@@ -7,6 +7,9 @@
 - `tests/unit/test_config.py`、`test_cli.py`：YAML schema、缺文件和 CLI 错误返回。
 - `tests/unit/test_data_contracts.py`：样本格式、先切分后滑窗、时间顺序与训练集 scaler。
 - `tests/unit/test_model_training_contracts.py`：CPU 模型 shape、checkpoint、共享 Trainer 与 Local-only 隔离。
+- `tests/unit/test_batching.py`：S1-C 单样本/批转换、错误输入、metadata 复制及 device 前置校验。
+- `tests/integration/test_data_model_bridge.py`：S1-C 现有 Dataset → DataLoader → ModelContract，
+  覆盖三个 split、spawn worker 与尾批；只验证 AT-01 的桥接部分，不代表完整 highD 验收。
 - `tests/unit/test_federated_contracts.py`：ClientUpdate、失败记录、state_dict、样本数与非浮点 buffer 策略。
 - `tests/unit/test_metrics.py`、`test_evaluation_contracts.py`：米制 ADE/FDE、JSON/CSV schema 与图表输出路径。
 - `tests/unit/test_utils.py`：固定随机源、路径逃逸拒绝、run 输出目录、结构化日志和共享夹具。

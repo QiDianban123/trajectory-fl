@@ -76,6 +76,24 @@ P0 预测模型的 `ModelContract` 固定为：输入 `history: torch.float32 [B
 
 `FitResult` 返回每个 epoch 的 sample count、train/validation loss、best epoch 和 checkpoint payload；`EvaluationResult` 返回 sample count 与 loss。Checkpoint 必须包含 `schema_version`、`model_state`、`model_config`、`seed`、`epoch`、`split_id` 和 `metrics`，并由结果层与运行配置共同保存。
 
+#### S1-C 实现补充：NumPy → Torch 边界（待团队评审）
+
+`src.training.batching` 提供唯一转换入口：
+
+- `sample_to_tensor(sample, *, contract)` 返回 `B=1` 的 `TrajectoryBatch`。
+- `collate_trajectory_samples(samples, *, contract)` 将同一 split/split_id 的样本合为 batch，
+  以显式 `ModelContract` 校验长度；通过 `functools.partial` 绑定后用作 DataLoader collate。
+- 输出固定为 CPU 上的 `torch.float32 [B,T_h,2]` / `[B,T_f,2]`，不重新归一化、
+  改变坐标语义或自动纠正 dtype。空 batch、错误类型/shape/dtype、非有限值均拒绝。
+- `TrajectoryBatch` 兼容增加 `meta: tuple[Mapping[str, object], ...] = ()`。
+  旧的二字段构造继续有效；桥接总是保留逐样本 metadata，顺序与 batch 行一致。
+  坐标与嵌套 metadata 均复制，避免训练侧修改影响 Dataset。
+- `TrajectoryBatch.validate` 先检查 Tensor 类型和 device 一致性，再做 shape/dtype/有限值校验，
+  拒绝没有实际数值的 `meta` device。设备迁移继续由 Trainer 负责，collate 不创建 CUDA Tensor。
+
+该增量不修改数据层、ModelContract、配置或 Trainer 的 fit/evaluate 签名。
+用法与验证证据见 [S1-C 交付记录](daily_records/S1_C.md)；公共接口增量尚待 E/A 评审及 B 对接确认。
+
 ### 3.6 联邦接口契约（D2-D 确认）
 
 Client 接收带 round 与 `global_state_id` 的不可变下发请求，未来只通过共享 Trainer 完成本地训练，并返回一个 `ClientUpdate` 或显式 `ClientFailure`。Server 负责唯一客户端选择、可用性检查和“一名选中客户端对应一个结果”的完整性；失败不得静默跳过。

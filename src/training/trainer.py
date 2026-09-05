@@ -20,7 +20,11 @@ from src.models.base import (
 
 @dataclass(frozen=True)
 class TrajectoryBatch:
-    """One normalized batch, with the caller retaining DataLoader ownership."""
+    """One normalized batch, with the caller retaining DataLoader ownership.
+
+    ``meta`` follows tensor row order. Its empty default preserves callers of the
+    D2 two-field constructor; the S1 collate boundary always supplies metadata.
+    """
 
     history: TrajectoryTensor
     future: TrajectoryTensor
