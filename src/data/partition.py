@@ -411,15 +411,19 @@ def partition_train_groups(
     region with the smaller sample count (ties go left); empty regions are
     dissolved the same way and never appear as empty clients. The result is
     deterministic: it depends only on the group set and the config.
+    Reserved zero-window groups are retained, but the input must contain at
+    least one effective train sample, including for a zero-width extent.
     """
 
     ordered = build_group_index(groups)
     if not ordered:
         raise PartitionError("at least one train group is required for client partition")
+    if not any(group.sample_count > 0 for group in ordered):
+        raise PartitionError("at least one effective train sample is required for client partition")
     requested = config.num_clients
     prefix = config.client_id_prefix
-    x_lo = ordered[0].x_min
-    x_hi = ordered[-1].x_max
+    x_lo = min(group.x_min for group in ordered)
+    x_hi = max(group.x_max for group in ordered)
 
     edges = config.region_edges
     degenerate = False
@@ -530,6 +534,8 @@ def check_partition_invariants(
         client_ids.add(client.client_id)
         if not client.group_ids:
             raise PartitionError(f"client {client.client_id!r} has no groups")
+        if client.sample_count <= 0:
+            raise PartitionError(f"client {client.client_id!r} has no effective train samples")
         client_sample_count = 0
         for group_id in client.group_ids:
             if group_id in assigned:
