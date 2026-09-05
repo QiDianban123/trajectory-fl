@@ -275,6 +275,62 @@ def test_partition_rejects_groups_outside_explicit_region_edges() -> None:
         partition_train_groups([_group(1, 50.0, 60.0)], config)
 
 
+@pytest.mark.parametrize("short_end", [20.0, 80.0])
+def test_overlapping_groups_use_the_full_longitudinal_extent(short_end: float) -> None:
+    groups = [_group("long", 0.0, 100.0), _group("short", 10.0, short_end)]
+    manifest = partition_train_groups(groups, PartitionConfig())
+    assert manifest.region_edges == (0.0, 20.0, 40.0, 60.0, 80.0, 100.0)
+    assert manifest == partition_train_groups(reversed(groups), PartitionConfig())
+    assert manifest.totals() == (2, 20)
+    check_partition_invariants(manifest, groups)
+
+
+def test_nested_group_outside_explicit_edges_is_rejected_even_with_midpoint_inside() -> None:
+    groups = [_group("long", 0.0, 100.0), _group("short", 10.0, 20.0)]
+    config = PartitionConfig(num_clients=2, region_edges=(0.0, 30.0, 60.0))
+    with pytest.raises(PartitionError, match="outside the configured region edges"):
+        partition_train_groups(groups, config)
+
+
+@pytest.mark.parametrize(
+    "zero_width,explicit_edges", [(False, False), (True, False), (False, True)]
+)
+def test_zero_window_inputs_are_rejected_before_partitioning(zero_width, explicit_edges) -> None:
+    groups = (
+        [_group(1, 5.0, 5.0, 0), _group(2, 5.0, 5.0, 0)]
+        if zero_width
+        else [_group(1, 0.0, 5.0, 0), _group(2, 10.0, 20.0, 0)]
+    )
+    config = PartitionConfig(
+        region_edges=(0.0, 4.0, 8.0, 12.0, 16.0, 20.0) if explicit_edges else None
+    )
+    with pytest.raises(PartitionError, match="at least one effective train sample"):
+        partition_train_groups(groups, config)
+
+
+def test_reserved_zero_window_groups_remain_when_effective_samples_exist() -> None:
+    groups = [_group("reserved", 0.0, 5.0, 0), _group("active", 10.0, 20.0, 3)]
+    manifest = partition_train_groups(groups, PartitionConfig(min_samples_per_client=10))
+    assert manifest.totals() == (2, 3)
+    assert manifest.assignment == {"reserved": "rsu_01", "active": "rsu_01"}
+    assert all(client.sample_count > 0 for client in manifest.clients)
+    check_partition_invariants(manifest, groups)
+
+
+def test_partition_invariants_reject_zero_sample_clients() -> None:
+    groups = [_group("reserved", 0.0, 5.0, 0), _group("active", 10.0, 20.0, 3)]
+    manifest = PartitionManifest(
+        region_edges=(0.0, 10.0, 20.0),
+        num_clients_requested=2,
+        clients=(
+            ClientPartition("rsu_01", 0.0, 10.0, 0, ("reserved",)),
+            ClientPartition("rsu_02", 10.0, 20.0, 3, ("active",)),
+        ),
+    )
+    with pytest.raises(PartitionError, match="no effective train samples"):
+        check_partition_invariants(manifest, groups)
+
+
 def test_partition_handles_zero_width_extent_as_single_client() -> None:
     groups = [_group(1, 50.0, 50.0, 4), _group(2, 50.0, 50.0, 4), _group(3, 50.0, 50.0, 4)]
     manifest = partition_train_groups(groups, PartitionConfig(num_clients=5))

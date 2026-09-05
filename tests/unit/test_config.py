@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from src.utils.config import (
     ConfigError,
@@ -108,3 +109,19 @@ def test_partition_region_edges_schema_is_validated() -> None:
     negative_min["partition"] = dict(base["partition"], min_samples_per_client=0)
     with pytest.raises(ConfigError, match="min_samples_per_client"):
         validate_config(negative_min, "data")
+
+
+@pytest.mark.parametrize("index,value", [(2, float("nan")), (5, float("inf")), (0, -float("inf"))])
+def test_partition_nonfinite_yaml_edges_are_rejected(tmp_path: Path, index, value) -> None:
+    config = load_yaml(PROJECT_ROOT / "configs/data.yaml")
+    edges = [0.0, 10.0, 20.0, 30.0, 40.0, 50.0]
+    edges[index] = value
+    config["partition"]["region_edges"] = edges
+    data_path = tmp_path / "nonfinite-data.yaml"
+    data_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    with pytest.raises(ConfigError, match=rf"partition.region_edges\[{index}\].*finite"):
+        validate_config_bundle(
+            data_path,
+            PROJECT_ROOT / "configs/model.yaml",
+            PROJECT_ROOT / "configs/experiments/smoke.yaml",
+        )

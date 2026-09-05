@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -274,6 +275,8 @@ def _validate_partition(partition: Mapping[str, Any]) -> None:
     for index, edge in enumerate(region_edges):
         if isinstance(edge, bool) or not isinstance(edge, (int, float)):
             raise ConfigError(f"partition.region_edges[{index}] must be a number")
+        if not isfinite(edge):
+            raise ConfigError(f"partition.region_edges[{index}] must be finite")
         if previous is not None and edge <= previous:
             raise ConfigError("partition.region_edges must be strictly increasing")
         previous = edge
