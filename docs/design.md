@@ -92,7 +92,7 @@ P0 预测模型的 `ModelContract` 固定为：输入 `history: torch.float32 [B
   拒绝没有实际数值的 `meta` device。设备迁移继续由 Trainer 负责，collate 不创建 CUDA Tensor。
 
 该增量不修改数据层、ModelContract、配置或 Trainer 的 fit/evaluate 签名。
-用法与验证证据见 [S1-C 交付记录](daily_records/S1_C.md)；公共接口增量尚待 E/A 评审及 B 对接确认。
+用法与验证证据见 [S1-C 交付记录](daily_records/S1_C/README.md)；公共接口增量尚待 E/A 评审及 B 对接确认。
 
 ### 3.6 联邦接口契约（D2-D 确认）
 
