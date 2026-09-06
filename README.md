@@ -23,6 +23,18 @@ python scripts\check_environment.py
 
 若尚未安装 Python，请先安装 Python 3.10 或更新版本，并重新打开终端。准备数据时，原始 highD CSV 放入 `data/raw/`；不要提交原始数据。
 
+## S1 数据诊断图
+
+运行以下命令可从确定性的合法小样例重建原始/清洗轨迹、异常计数、真值轨迹和
+scaler inverse-transform 抽检图：
+
+```powershell
+python scripts\plot_data_diagnostics.py
+```
+
+默认输出位于 `outputs/s1-e-data-plots/figures/data/`。可使用 `--output-dir <目录>`
+覆盖输出位置；脚本只生成可重建产物，不向仓库提交运行图片。
+
 ## 再次进入虚拟环境（PowerShell）
 
 每次打开新的终端后，先进入仓库根目录，再激活已创建的 `.venv`：
