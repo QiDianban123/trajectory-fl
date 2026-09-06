@@ -1,20 +1,15 @@
-"""HighD input failure tests for S1-F-01 (AT-01).
-
-Constraint REQ-NODROP-01: every malformed input must raise an explicit exception
-with a traceable message. No sample is silently dropped: the caller can map the
-exception back to the offending record, field, or frame sequence.
-"""
+"""Standard-sample and frame-validator tests; not raw highD adapter acceptance."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 import numpy as np
 import pytest
 
 from src.data.adapters import TrajectorySample
-from src.data.preprocess import validate_strictly_increasing_frames
+from src.data.dataset import TrajectoryDataset
+from src.data.preprocess import WindowSpec, validate_strictly_increasing_frames
 
 
 def _metadata(**overrides: object) -> dict[str, object]:
@@ -34,9 +29,7 @@ def _metadata(**overrides: object) -> dict[str, object]:
     return meta
 
 
-def _sample_with_coordinates(
-    history: np.ndarray, future: np.ndarray
-) -> TrajectorySample:
+def _sample_with_coordinates(history: np.ndarray, future: np.ndarray) -> TrajectorySample:
     return TrajectorySample(history=history, future=future, meta=_metadata())
 
 
@@ -45,20 +38,15 @@ def _sample_with_coordinates(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("field", ["id", "frame", "x", "y"])
-def test_missing_field_is_rejected(
+@pytest.mark.parametrize("field", ["recording_id", "vehicle_id", "split", "split_id"])
+def test_missing_sample_metadata_is_rejected(
     field: str,
-    invalid_highd_record: Callable[[str], dict[str, object]],
+    valid_trajectory_sample: TrajectorySample,
 ) -> None:
-    """A highD record missing a required column must not silently pass through."""
-
-    record = invalid_highd_record(field)
-    assert field not in record
-    # The data contract requires id/frame/x/y to be present before sample
-    # construction. Missing any of them must raise a KeyError so the caller can
-    # attribute the failure to the specific record and field (no silent drop).
-    with pytest.raises(KeyError, match=field):
-        _ = record[field]
+    meta = dict(valid_trajectory_sample.meta)
+    del meta[field]
+    with pytest.raises(ValueError, match=field):
+        TrajectorySample(valid_trajectory_sample.history, valid_trajectory_sample.future, meta)
 
 
 # ---------------------------------------------------------------------------
@@ -89,27 +77,24 @@ def test_nonfinite_coordinate_is_rejected(axis: str, value: float) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("num_frames", [199, 10])
-def test_short_trajectory_is_rejected(
-    num_frames: int,
-    short_trajectory_record: Callable[[int], list[dict[str, object]]],
-    config_bundle: dict[str, dict[str, object]],
+@pytest.mark.parametrize("part", ["history", "future"])
+def test_short_sample_window_is_rejected(
+    part: str,
+    valid_trajectory_sample: TrajectorySample,
 ) -> None:
-    """Tracks shorter than minimum_track_frames must be rejected traceably.
-
-    The rejection is observable by comparing the track length against the
-    configured minimum; the caller can count rejected tracks rather than
-    silently dropping them.
-    """
-
-    minimum_track_frames = config_bundle["data"]["preprocessing"]["minimum_track_frames"]
-    track = short_trajectory_record(num_frames)
-    assert len(track) == num_frames
-    assert len(track) < minimum_track_frames
-    # The track is not eligible for sample construction; the caller must account
-    # for it explicitly (e.g. increment a rejected-track counter) rather than
-    # silently skipping it. Here we assert the traceable invariant.
-    assert len(track) < int(minimum_track_frames)
+    sample = valid_trajectory_sample
+    malformed = TrajectorySample(
+        sample.history[:-1] if part == "history" else sample.history,
+        sample.future[:-1] if part == "future" else sample.future,
+        sample.meta,
+    )
+    with pytest.raises(ValueError, match=f"sample {part} shape"):
+        TrajectoryDataset(
+            [malformed],
+            split="train",
+            split_id="highd-split-42",
+            window_spec=WindowSpec(history_steps=2, future_steps=3, stride=1),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +131,3 @@ def test_out_of_order_frame_is_rejected(
     frames = [int(record["frame"]) for record in track]
     with pytest.raises(ValueError, match="strictly increasing"):
         validate_strictly_increasing_frames(frames)
-
-
-# Silence the unused-import linter for the demo helper kept for documentation.
-_: Any = TrajectorySample

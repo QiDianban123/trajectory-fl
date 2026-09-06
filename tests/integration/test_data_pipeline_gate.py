@@ -1,4 +1,4 @@
-"""Data pipeline integration gate tests for S1-F-01 (AT-04).
+"""Split/scaler contract checks for S1-F-01; not raw pipeline acceptance.
 
 Covers split group disjointness (REQ-SPLIT-01) and TrainingCoordinateScaler
 leakage prevention, reversibility, and unfitted-use rejection
@@ -87,3 +87,17 @@ def test_unfitted_scaler_rejects_use(method: str) -> None:
     coordinates = np.array([[[0.0, 2.0], [2.0, 6.0]]], dtype=np.float32)
     with pytest.raises(RuntimeError, match="scaler must be fitted"):
         getattr(scaler, method)(coordinates)
+
+
+def test_holdout_transform_preserves_train_statistics() -> None:
+    train = np.array([[0.0, 2.0], [2.0, 6.0]], dtype=np.float32)
+    holdout = np.array([[1000.0, -500.0], [2000.0, -900.0]], dtype=np.float32)
+    scaler = TrainingCoordinateScaler().fit(train, split="train")
+    mean, scale = scaler.mean_.copy(), scaler.scale_.copy()
+    normalized_train = scaler.transform(train)
+    transformed_holdout = scaler.transform(holdout)
+    np.testing.assert_array_equal(scaler.mean_, mean)
+    np.testing.assert_array_equal(scaler.scale_, scale)
+    np.testing.assert_array_equal(scaler.transform(train), normalized_train)
+    np.testing.assert_allclose(transformed_holdout, (holdout - mean) / scale)
+    np.testing.assert_allclose(scaler.inverse_transform(transformed_holdout), holdout)
