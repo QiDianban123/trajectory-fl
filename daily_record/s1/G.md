@@ -41,19 +41,17 @@ G（实验运行与复现开发）
 \- `feat(experiments): add run context \[S1-G-01]\[M2]`
 
 
+## D4 工作（2026-09-06）
 
-\## D4 工作（2026-09-06）
+### 已完成
+- [x] 实现数据文件 checksum 计算（SHA256）
+- [x] 实现 `record_data_file` 自动记录文件及校验值
+- [x] 实现 `export_data_profile` 数据画像 JSON 导出
+- [x] 编写 D4 测试（5 个用例全部通过）
+- [x] 修复 Windows 路径分隔符问题
 
-
-
-\### 计划
-
-\- \[ ] 扩展 manifest 支持数据文件 checksum 和 split 记录
-
-\- \[ ] 与 A/B 联调确认输出路径
-
-\- \[ ] 提交 MR 到 dev 分支
-
+### 提交
+- `feat(experiments): add data manifest [S1-G-01][AT-01]`
 
 
 \## 评审

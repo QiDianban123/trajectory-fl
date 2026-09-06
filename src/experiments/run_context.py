@@ -2,6 +2,7 @@
 RunContext: 实验运行上下文，记录配置、代码版本、输出目录和 manifest。
 """
 
+import hashlib
 import json
 import re
 import subprocess
@@ -9,6 +10,15 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+
+def file_checksum(filepath: Path) -> str:
+    """计算文件的 SHA256 校验值。"""
+    hasher = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 class RunContext:
@@ -19,6 +29,7 @@ class RunContext:
         outputs/<run_id>/
             config_snapshot.json
             manifest.json
+            data_profile.json
             ... (其他产物由调用方写入)
     """
 
@@ -88,6 +99,9 @@ class RunContext:
             "splits": {},
         }
 
+    # ------------------------------------------------------------------ #
+    # 内部方法
+    # ------------------------------------------------------------------ #
     def _generate_run_id(self) -> str:
         timestamp = datetime.now().strftime(self._TIMESTAMP_FMT)
         short_uuid = uuid.uuid4().hex[:6]
@@ -130,13 +144,19 @@ class RunContext:
         config_path = self.output_dir / "config_snapshot.json"
         config_path.write_text(self._config_json, encoding="utf-8")
 
+    # ------------------------------------------------------------------ #
+    # D3 公共接口
+    # ------------------------------------------------------------------ #
     def add_data_file(self, relative_path: str, checksum: str) -> None:
+        """记录一个数据文件及其 SHA256 校验值。"""
         self._manifest["data_files"][relative_path] = checksum
 
     def add_split_manifest(self, split_id: str, file_manifests: list) -> None:
+        """记录某个 split（如 train/val/test 或 rsu_01）的文件清单。"""
         self._manifest["splits"][split_id] = file_manifests
 
     def export_manifest(self) -> Path:
+        """将 manifest 写入 outputs/<run_id>/manifest.json，返回路径。"""
         manifest_path = self.output_dir / "manifest.json"
         manifest_path.write_text(
             json.dumps(self._manifest, indent=2, ensure_ascii=False),
@@ -145,4 +165,26 @@ class RunContext:
         return manifest_path
 
     def get_manifest(self) -> Dict[str, Any]:
+        """返回当前 manifest 字典（不写入文件）。"""
         return self._manifest.copy()
+
+    # ------------------------------------------------------------------ #
+    # D4 新增公共接口
+    # ------------------------------------------------------------------ #
+    def record_data_file(self, absolute_path: Path) -> None:
+        """记录一个数据文件（自动计算 checksum）。"""
+        absolute_path = Path(absolute_path)
+        if not absolute_path.exists():
+            raise FileNotFoundError(f"Data file not found: {absolute_path}")
+        checksum = file_checksum(absolute_path)
+        relative_path = str(absolute_path.relative_to(self.project_root)).replace("\\", "/")
+        self.add_data_file(relative_path, checksum)
+
+    def export_data_profile(self, profile: dict) -> Path:
+        """导出数据画像 JSON。"""
+        profile_path = self.output_dir / "data_profile.json"
+        profile_path.write_text(
+            json.dumps(profile, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return profile_path
