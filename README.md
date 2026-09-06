@@ -73,6 +73,12 @@ python -m ruff check src tests
 python -m src.cli validate-config
 ```
 
+GitHub Actions 的 Quality Gate 使用 Ubuntu / Python 3.10，并保存 JUnit 报告。
+本地可设置 `MPLBACKEND=Agg` 使用无界面绘图，再运行上述相同检查；需要报告时
+运行 `python -m pytest -q --junitxml=outputs/quality-gate.xml`。
+当前测试范围与尚未完成的 MS2 数据管线验收见
+[S1-F 质量门禁记录](docs/daily_records/S1_F/review_fixes.md)。
+
 运行入口应在创建模型、数据划分或训练前调用 `set_global_seed(seed)`。每个 run 使用唯一 `run_id`，其配置、元数据、JSON 日志、指标、检查点和图表保存在 `outputs/<run_id>/`；已存在的 run ID 会被拒绝，避免覆盖结果。
 
 ## D1 交付物映射
