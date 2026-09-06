@@ -1,3 +1,5 @@
-from .run_context import RunContext, file_checksum
+"""Experiment execution and reproducibility helpers."""
 
-__all__ = ["RunContext", "file_checksum"]
+from src.experiments.run_context import MANIFEST_SCHEMA_VERSION, RunContext, file_checksum
+
+__all__ = ["MANIFEST_SCHEMA_VERSION", "RunContext", "file_checksum"]
