@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -46,3 +49,34 @@ def test_train_scaler_round_trip_feeds_meter_truth_plots(tmp_path: Path) -> None
 
     assert truth_path.is_file()
     assert inverse_path.is_file()
+
+
+def test_diagnostic_script_rebuilds_complete_figure_set(tmp_path: Path) -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    output_dir = tmp_path / "figures"
+    environment = os.environ.copy()
+    environment["MPLBACKEND"] = "Agg"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(project_root / "scripts" / "plot_data_diagnostics.py"),
+            "--output-dir",
+            str(output_dir),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    expected_names = {
+        "recording_demo-01_vehicle_1_anomaly_counts.png",
+        "recording_demo-01_vehicle_1_inverse_transform.png",
+        "recording_demo-01_vehicle_1_raw_cleaned.png",
+        "recording_demo-01_vehicle_1_truth.png",
+    }
+    assert {path.name for path in output_dir.glob("*.png")} == expected_names
+    assert all(path.stat().st_size > 0 for path in output_dir.glob("*.png"))

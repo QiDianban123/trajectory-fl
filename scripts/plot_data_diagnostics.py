@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
-
-from src.data.preprocess import TrainingCoordinateScaler
-from src.evaluation.data_diagnostics import generate_data_diagnostic_figures
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,8 +20,20 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
-    args = build_parser().parse_args()
+def _make_project_importable() -> None:
+    """Allow this repository script to run directly from any working directory."""
+
+    project_root = str(Path(__file__).resolve().parents[1])
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
+
+def main(argv: list[str] | None = None) -> int:
+    _make_project_importable()
+    from src.data.preprocess import TrainingCoordinateScaler
+    from src.evaluation.data_diagnostics import generate_data_diagnostic_figures
+
+    args = build_parser().parse_args(argv)
 
     raw_xy = np.array(
         [

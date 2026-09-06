@@ -37,7 +37,7 @@ def plot_raw_cleaned_trajectories(
     for axis, values, label, title in panels:
         axis.plot(*values.T, "o-", markersize=3, label=label)
         axis.set(title=title, xlabel="x (m)", ylabel="y (m)")
-        axis.axis("equal")
+        axis.set_aspect("equal", adjustable="box")
         axis.grid(alpha=0.25)
         axis.legend()
     figure.suptitle(f"Trajectory cleaning snapshot | {identity}")
@@ -136,7 +136,7 @@ def plot_inverse_transform_check(
         label="inverse-transformed coordinates",
     )
     axis.set(
-        title=f"Scaler inverse-transform check{identity} | max error={max_error:.3g} m",
+        title=f"Scaler inverse-transform check{identity}\nmax error={max_error:.3g} m",
         xlabel="x (m)",
         ylabel="y (m)",
     )

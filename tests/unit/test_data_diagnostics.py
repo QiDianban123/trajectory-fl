@@ -120,6 +120,25 @@ def test_inverse_transform_plot_requires_matching_shapes(tmp_path: Path) -> None
         )
 
 
+def test_inverse_transform_plot_keeps_error_summary_on_separate_title_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_close = plt.close
+    monkeypatch.setattr(diagnostics.plt, "close", lambda _figure: None)
+    output = plot_inverse_transform_check(
+        _trajectory(),
+        _trajectory().copy(),
+        tmp_path / "inverse.png",
+        recording_id="01",
+        vehicle_id=2,
+    )
+    figure = diagnostics.plt.gcf()
+
+    assert figure.axes[0].get_title().endswith("\nmax error=0 m")
+    assert output.is_file()
+    original_close(figure)
+
+
 def test_complete_diagnostic_set_uses_deterministic_names(tmp_path: Path) -> None:
     values = _trajectory()
     arguments = {
