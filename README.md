@@ -23,6 +23,18 @@ python scripts\check_environment.py
 
 若尚未安装 Python，请先安装 Python 3.10 或更新版本，并重新打开终端。准备数据时，原始 highD CSV 放入 `data/raw/`；不要提交原始数据。
 
+## S1 数据诊断图
+
+运行以下命令可从确定性的合法小样例重建原始/清洗轨迹、异常计数、真值轨迹和
+scaler inverse-transform 抽检图：
+
+```powershell
+python scripts\plot_data_diagnostics.py
+```
+
+默认输出位于 `outputs/s1-e-data-plots/figures/data/`。可使用 `--output-dir <目录>`
+覆盖输出位置；脚本只生成可重建产物，不向仓库提交运行图片。
+
 ## 再次进入虚拟环境（PowerShell）
 
 每次打开新的终端后，先进入仓库根目录，再激活已创建的 `.venv`：
@@ -60,6 +72,12 @@ python -m pytest -q
 python -m ruff check src tests
 python -m src.cli validate-config
 ```
+
+GitHub Actions 的 Quality Gate 使用 Ubuntu / Python 3.10，并保存 JUnit 报告。
+本地可设置 `MPLBACKEND=Agg` 使用无界面绘图，再运行上述相同检查；需要报告时
+运行 `python -m pytest -q --junitxml=outputs/quality-gate.xml`。
+当前测试范围与尚未完成的 MS2 数据管线验收见
+[S1-F 质量门禁记录](docs/daily_records/S1_F/review_fixes.md)。
 
 运行入口应在创建模型、数据划分或训练前调用 `set_global_seed(seed)`。每个 run 使用唯一 `run_id`，其配置、元数据、JSON 日志、指标、检查点和图表保存在 `outputs/<run_id>/`；已存在的 run ID 会被拒绝，避免覆盖结果。
 

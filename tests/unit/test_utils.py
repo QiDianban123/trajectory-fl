@@ -48,7 +48,7 @@ def test_output_paths_reject_traversal_and_absolute_artifacts(temporary_output_r
     with pytest.raises(PathSafetyError, match="escapes"):
         resolve_within(temporary_output_root, "../outside.json")
     with pytest.raises(PathSafetyError, match="relative"):
-        resolve_within(temporary_output_root, Path("C:/outside.json"))
+        resolve_within(temporary_output_root, temporary_output_root.resolve() / "outside.json")
 
 
 def test_run_logger_writes_structured_json_lines(temporary_output_root: Path) -> None:
