@@ -4,15 +4,16 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from src.data.adapters import HighDAdapter
+from src.data.adapters import HighDAdapter, TrajectorySample
 from src.data.dataset import (
     TrajectoryDataset,
     load_dataset,
     save_dataset,
     save_split_datasets,
 )
-from src.data.preprocess import WindowSpec
+from src.data.preprocess import TrainingCoordinateScaler, WindowSpec
 
 
 def _config() -> dict[str, object]:
@@ -116,3 +117,108 @@ def test_highd_pipeline_rejects_bad_tracks_and_reports_statistics() -> None:
 
     assert cleaned["stats"]["rejected_tracks"] == 1
     assert cleaned["stats"]["rejected_rows"] == 2
+
+
+def test_highd_pipeline_rejects_out_of_order_frames_with_a_reason() -> None:
+    records = _records()
+    records.loc[1, "Frame ID"] = 2
+    records.loc[2, "Frame ID"] = 1
+
+    cleaned = HighDAdapter().preprocess(records, _config())
+
+    assert 1 not in set(cleaned["records"]["id"])
+    assert cleaned["stats"]["rejection_reasons"] == {"out_of_order_frame": 1}
+
+
+def test_split_id_changes_when_processed_data_changes() -> None:
+    records = _records()
+    changed = records.copy()
+    changed["x Position"] += 1000.0
+
+    first = HighDAdapter().preprocess(records, _config())
+    second = HighDAdapter().preprocess(changed, _config())
+
+    assert first["data_version"] != second["data_version"]
+    assert first["split_id"] != second["split_id"]
+
+
+def test_highd_pipeline_rejects_missing_non_integer_and_short_tracks() -> None:
+    adapter = HighDAdapter()
+    with pytest.raises(ValueError, match="missing required columns: y"):
+        adapter.preprocess(_records().drop(columns="y Position"), _config())
+
+    records = _records()
+    records["Frame ID"] = records["Frame ID"].astype(float)
+    records.loc[0, "Frame ID"] = 0.5
+    short = pd.DataFrame(
+        [
+            {"Track ID": 99, "Frame ID": frame, "x Position": 1.0, "y Position": 2.0}
+            for frame in range(4)
+        ]
+    )
+    cleaned = adapter.preprocess(pd.concat([records, short], ignore_index=True), _config())
+
+    reasons = cleaned["stats"]["rejection_reasons"]
+    assert reasons == {"non_integer_id_or_frame": 1, "short_track": 1}
+
+
+def test_splitter_allocates_every_split_for_the_smallest_legal_group_count() -> None:
+    cleaned = HighDAdapter().preprocess(_records(vehicle_count=3), _config())
+
+    assert cleaned["stats"]["split_counts"] == {"train": 1, "validation": 1, "test": 1}
+    assert {record["split"] for _, record in cleaned["records"].iterrows()} == {
+        "train",
+        "validation",
+        "test",
+    }
+
+
+def test_persistence_rejects_invalid_scaler_and_inconsistent_splits(tmp_path) -> None:
+    cleaned = HighDAdapter().preprocess(_records(), _config())
+    datasets = HighDAdapter().build_datasets(cleaned, _config())
+    train = datasets["train"]
+
+    with pytest.raises(ValueError, match="scaler must be fitted"):
+        save_dataset(
+            train, tmp_path / "invalid-scaler", scaler=TrainingCoordinateScaler(), stats={}
+        )
+    assert not (tmp_path / "invalid-scaler").exists()
+
+    inconsistent = dict(datasets)
+    mismatched_samples = [
+        TrajectorySample(
+            sample.history,
+            sample.future,
+            {**sample.meta, "split_id": "different-split"},
+        )
+        for sample in datasets["validation"]
+    ]
+    inconsistent["validation"] = TrajectoryDataset(
+        mismatched_samples,
+        split="validation",
+        split_id="different-split",
+        window_spec=datasets["validation"].window_spec,
+    )
+    with pytest.raises(ValueError, match="share one split_id"):
+        save_split_datasets(
+            inconsistent,
+            tmp_path / "inconsistent",
+            scaler=cleaned["scaler"],
+            stats=cleaned["stats"],
+            data_version=cleaned["data_version"],
+        )
+    assert not (tmp_path / "inconsistent").exists()
+
+
+def test_load_dataset_rejects_corrupt_scaler(tmp_path) -> None:
+    cleaned = HighDAdapter().preprocess(_records(), _config())
+    dataset = HighDAdapter().build_datasets(cleaned, _config())["train"]
+    output = save_dataset(dataset, tmp_path / "train", scaler=cleaned["scaler"], stats={})
+    np.savez_compressed(
+        output / "scaler.npz",
+        mean=np.array([np.nan, 0.0], dtype=np.float32),
+        scale=np.array([1.0, 1.0], dtype=np.float32),
+    )
+
+    with pytest.raises(ValueError, match="two finite coordinates"):
+        load_dataset(output)

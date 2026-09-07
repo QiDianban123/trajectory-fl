@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -131,29 +132,45 @@ class HighDAdapter:
         frame["frame"] = pd.to_numeric(frame["frame"], errors="coerce")
         frame["x"] = pd.to_numeric(frame["x"], errors="coerce")
         frame["y"] = pd.to_numeric(frame["y"], errors="coerce")
-        stats = {"input_rows": len(frame), "rejected_tracks": 0, "rejected_rows": 0}
+        stats: dict[str, object] = {
+            "input_rows": len(frame),
+            "rejected_tracks": 0,
+            "rejected_rows": 0,
+            "rejection_reasons": {},
+        }
         minimum = int(config["preprocessing"]["minimum_track_frames"])
         valid_tracks: list[pd.DataFrame] = []
+
+        def reject(track: pd.DataFrame, reason: str) -> None:
+            stats["rejected_tracks"] = int(stats["rejected_tracks"]) + 1
+            stats["rejected_rows"] = int(stats["rejected_rows"]) + len(track)
+            reasons = stats["rejection_reasons"]
+            assert isinstance(reasons, dict)
+            reasons[reason] = int(reasons.get(reason, 0)) + 1
+
         for _, track in frame.groupby(["recording_id", "id"], sort=False, dropna=False):
             track = track.copy()
             if track[["id", "frame", "x", "y"]].isna().any().any():
-                stats["rejected_tracks"] += 1
-                stats["rejected_rows"] += len(track)
+                reject(track, "missing_or_non_numeric_required_value")
                 continue
             if not np.isfinite(track[["frame", "x", "y"]].to_numpy(dtype=float)).all():
-                stats["rejected_tracks"] += 1
-                stats["rejected_rows"] += len(track)
+                reject(track, "nonfinite_coordinate_or_frame")
+                continue
+            identifiers = track[["id", "frame"]].to_numpy(dtype=float)
+            if not np.equal(identifiers, np.floor(identifiers)).all():
+                reject(track, "non_integer_id_or_frame")
                 continue
             track["id"] = track["id"].astype(np.int64)
             track["frame"] = track["frame"].astype(np.int64)
             if track["frame"].duplicated().any():
-                stats["rejected_tracks"] += 1
-                stats["rejected_rows"] += len(track)
+                reject(track, "duplicate_frame")
                 continue
-            track = track.sort_values("frame")
+            frames = track["frame"].to_numpy(dtype=np.int64)
+            if np.any(np.diff(frames) <= 0):
+                reject(track, "out_of_order_frame")
+                continue
             if len(track) < minimum:
-                stats["rejected_tracks"] += 1
-                stats["rejected_rows"] += len(track)
+                reject(track, "short_track")
                 continue
             valid_tracks.append(track)
         if not valid_tracks:
@@ -169,9 +186,9 @@ class HighDAdapter:
         order = rng.permutation(len(groups))
         shuffled = [groups[index] for index in order]
         assignments: dict[tuple[object, object], SplitName] = {}
-        ratios = (float(split_config["train"]), float(split_config["validation"]))
-        train_end = round(len(shuffled) * ratios[0])
-        validation_end = train_end + round(len(shuffled) * ratios[1])
+        counts = self._split_counts(len(shuffled), split_config)
+        train_end = counts["train"]
+        validation_end = train_end + counts["validation"]
         for index, group in enumerate(shuffled):
             split: SplitName = (
                 "train" if index < train_end else "validation" if index < validation_end else "test"
@@ -194,15 +211,12 @@ class HighDAdapter:
             raise ValueError("vehicle split produced no training tracks for scaler fitting")
         scaler = TrainingCoordinateScaler().fit(train_coordinates, split="train")
         data_version = self._data_version(cleaned)
-        split_id = self._split_id(assignments, split_config)
+        split_id = self._split_id(assignments, split_config, data_version)
         stats.update(
             {
                 "valid_tracks": len(valid_tracks),
                 "valid_rows": len(cleaned),
-                "split_counts": {
-                    name: sum(value == name for value in assignments.values())
-                    for name in ("train", "validation", "test")
-                },
+                "split_counts": counts,
             }
         )
         return {
@@ -234,10 +248,14 @@ class HighDAdapter:
         for (recording_id, vehicle_id), track in records.groupby(
             ["recording_id", "id"], sort=False
         ):
-            track = track.sort_values("frame")
             split = track["split"].iloc[0]
             coordinates = scaler.transform(track[["x", "y"]].to_numpy(dtype=np.float32))
             frames = track["frame"].to_numpy(dtype=np.int64)
+            if np.any(np.diff(frames) <= 0):
+                raise ValueError(
+                    "track has non-increasing frames: "
+                    f"recording={recording_id!r}, vehicle={vehicle_id!r}"
+                )
             total = window.history_steps + window.future_steps
             for start in range(0, len(track) - total + 1, window.stride):
                 history_frames = frames[start : start + window.history_steps]
@@ -311,12 +329,43 @@ class HighDAdapter:
 
     @staticmethod
     def _split_id(
-        assignments: Mapping[tuple[object, object], SplitName], split_config: Mapping[str, object]
+        assignments: Mapping[tuple[object, object], SplitName],
+        split_config: Mapping[str, object],
+        data_version: str,
     ) -> str:
-        payload = repr(sorted((str(key), value) for key, value in assignments.items())) + repr(
-            dict(split_config)
+        payload = json.dumps(
+            {
+                "assignments": sorted((str(key), value) for key, value in assignments.items()),
+                "data_version": data_version,
+                "split_config": dict(sorted(split_config.items())),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
         )
         return f"highd-split-{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
+
+    @staticmethod
+    def _split_counts(group_count: int, split_config: Mapping[str, object]) -> dict[SplitName, int]:
+        if group_count < 3:
+            raise ValueError(
+                "at least three valid vehicle groups are required for train/validation/test"
+            )
+        names: tuple[SplitName, ...] = ("train", "validation", "test")
+        ratios = np.asarray([float(split_config[name]) for name in names], dtype=float)
+        raw_counts = ratios * group_count
+        counts = np.floor(raw_counts).astype(int)
+        for index in np.argsort(-(raw_counts - counts))[: group_count - int(counts.sum())]:
+            counts[index] += 1
+        for index, count in enumerate(counts):
+            if count == 0:
+                donor = int(np.argmax(counts))
+                if counts[donor] <= 1:
+                    raise ValueError(
+                        "split ratios cannot allocate at least one group to every split"
+                    )
+                counts[donor] -= 1
+                counts[index] += 1
+        return {name: int(count) for name, count in zip(names, counts, strict=True)}
 
     @staticmethod
     def _scalar(value: object) -> str | int:
