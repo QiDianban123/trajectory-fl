@@ -45,6 +45,7 @@ class RunContext:
         run_id: str | None = None,
         *,
         code_sha: str | None = None,
+        output_root: str | Path = "outputs",
     ) -> None:
         self.project_root = Path(project_root).resolve()
         if not self.project_root.is_dir():
@@ -58,9 +59,15 @@ class RunContext:
         self.git_sha = self.code_sha
         self._config = self._json_clone(config, "config", require_mapping=True)
 
-        output_root = (self.project_root / "outputs").resolve()
-        self.output_dir = (output_root / self.run_id).resolve()
-        if not self.output_dir.is_relative_to(output_root):
+        output_root_path = Path(output_root)
+        if output_root_path.is_absolute():
+            resolved_output_root = output_root_path.resolve()
+        else:
+            resolved_output_root = (self.project_root / output_root_path).resolve()
+        if not resolved_output_root.is_relative_to(self.project_root):
+            raise ValueError(f"output_root escapes project root: {output_root}")
+        self.output_dir = (resolved_output_root / self.run_id).resolve()
+        if not self.output_dir.is_relative_to(resolved_output_root):
             raise ValueError(f"run output escapes output root: {self.output_dir}")
         self.output_dir.mkdir(parents=True, exist_ok=False)
 
