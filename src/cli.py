@@ -79,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Processed data: {prepared.processed_dir}")
         print(f"Split manifest: {prepared.split_manifest_path}")
         print(f"Partition manifest: {prepared.partition_manifest_path}")
+        print(f"Processed index: {prepared.processed_index_path}")
         print(f"Run manifest: {prepared.run_manifest_path}")
         return 0
     if args.command in {"train", "compare"}:

@@ -47,6 +47,18 @@ def test_duplicate_run_is_rejected(tmp_path: Path) -> None:
         _context(tmp_path)
 
 
+def test_context_removes_new_run_directory_when_snapshot_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_write(path: Path, payload: object) -> None:
+        raise OSError("injected snapshot failure")
+
+    monkeypatch.setattr(RunContext, "_write_json", staticmethod(fail_write))
+    with pytest.raises(OSError, match="injected snapshot failure"):
+        RunContext({}, tmp_path, run_id="failed-run", code_sha=CODE_SHA)
+    assert not (tmp_path / "outputs" / "failed-run").exists()
+
+
 @pytest.mark.parametrize("config", [{"callback": lambda: None}, {"value": float("nan")}, []])
 def test_non_json_object_config_is_rejected_before_output_creation(
     tmp_path: Path, config: object

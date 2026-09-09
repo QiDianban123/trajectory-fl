@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import uuid
 from collections.abc import Mapping
@@ -69,10 +70,16 @@ class RunContext:
         self.output_dir = (resolved_output_root / self.run_id).resolve()
         if not self.output_dir.is_relative_to(resolved_output_root):
             raise ValueError(f"run output escapes output root: {self.output_dir}")
+        if self.output_dir.exists():
+            raise FileExistsError(f"run output already exists: {self.output_dir}")
         self.output_dir.mkdir(parents=True, exist_ok=False)
 
         self.config_path = self.output_dir / "config_snapshot.json"
-        self._write_json(self.config_path, self._config)
+        try:
+            self._write_json(self.config_path, self._config)
+        except (OSError, TypeError, ValueError):
+            shutil.rmtree(self.output_dir)
+            raise
         self._created_at = datetime.now(timezone.utc).isoformat()
         self._data_version: str | None = None
         self._split_id: str | None = None

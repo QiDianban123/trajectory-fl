@@ -1,8 +1,8 @@
 # A 角色 D3-D4 工作过程记录
 
-**角色：** A，项目负责人 / 架构与集成开发  
-**任务：** S1-A-01 数据准备入口与阶段集成  
-**日期：** 2026-09-09  
+**角色：** A，项目负责人 / 架构与集成开发
+**任务：** S1-A-01 数据准备入口与阶段集成
+**日期：** 2026-09-09
 **关联：** F1、M1、M6、AT-01、AT-04
 
 ## 一、任务清单对应情况
@@ -77,10 +77,14 @@ python -m ruff check src tests
 python -m src.cli validate-config
 ```
 
-实际结果：专项 CLI 测试 `6 passed`；设置 `MPLBACKEND=Agg` 并排除 macOS 上会阻塞的
-`num_workers=1` spawn 用例后，回归 `204 passed, 6 deselected`；Ruff 与
-`validate-config` 均通过。默认 macOS Matplotlib 后端会在图表集成测试中中止，且该
-worker 用例在本机 Python 3.10 中阻塞，均为现有环境问题，不作为本交付的通过证据。
+实际结果：包含 CLI、事务回滚及 RunContext 的专项测试 `26 passed`；设置
+`MPLBACKEND=Agg` 后全量回归 `213 passed`；Ruff 与 `validate-config` 均通过，
+没有排除或取消选择测试。
+
+重复 run 在写 processed 数据前失败并保留原目录；manifest 阶段注入失败后，
+本次新建的 processed split 和 run 目录均被删除。成功运行还生成
+`processed_index.json`，记录 processed 目录、split/partition manifest、train scaler
+及三个 split 的 samples 路径，并由 run manifest 的 `artifacts` 索引。
 
 本地端到端测试使用匿名生成的 highD 风格 CSV，写在 pytest 临时目录；不需要、不下载、也不提交受许可限制的真实 highD 原始数据或处理产物。
 

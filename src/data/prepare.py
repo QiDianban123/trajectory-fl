@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ class PreparedData:
     processed_dir: Path
     split_manifest_path: Path
     partition_manifest_path: Path
+    processed_index_path: Path
     run_manifest_path: Path
     sample_counts: Mapping[str, int]
 
@@ -102,7 +104,9 @@ def prepare_data(
         raise PrepareDataError(
             f"processed split already exists and will not be overwritten: {destination}"
         )
+    context: RunContext | None = None
     try:
+        context = RunContext(bundle, root, run_id=run_id, output_root=resolved_output_root)
         processed_root.mkdir(parents=True, exist_ok=True)
         save_split_datasets(
             datasets,
@@ -113,7 +117,6 @@ def prepare_data(
         )
         partition_manifest_path = destination / "partition_manifest.json"
         _write_json(partition_manifest_path, partition.to_mapping())
-        context = RunContext(bundle, root, run_id=run_id, output_root=resolved_output_root)
         context.set_data_identity(data_version=str(cleaned["data_version"]), split_id=split_id)
         for path in raw_files:
             context.record_data_file(path)
@@ -125,6 +128,21 @@ def prepare_data(
         context.add_split_manifest("dataset", split_manifest)
         context.add_partition_manifest(partition)
         sample_counts = {split: len(dataset) for split, dataset in datasets.items()}
+        processed_index_path = context.output_dir / "processed_index.json"
+        _write_json(
+            processed_index_path,
+            {
+                "processed_dir": _relative_to_root(destination, root),
+                "split_manifest": _relative_to_root(split_manifest_path, root),
+                "partition_manifest": _relative_to_root(partition_manifest_path, root),
+                "scaler": _relative_to_root(destination / "train" / "scaler.npz", root),
+                "splits": {
+                    split: _relative_to_root(destination / split / "samples.npz", root)
+                    for split in ("train", "validation", "test")
+                },
+            },
+        )
+        context.add_artifact("processed_index", processed_index_path.name)
         context.export_data_profile(
             {
                 "dataset": adapter.dataset_name,
@@ -135,7 +153,10 @@ def prepare_data(
             }
         )
         run_manifest_path = context.export_manifest()
-    except (FileNotFoundError, OSError, TypeError, ValueError) as exc:
+    except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        _remove_created_directory(destination, processed_root)
+        if context is not None:
+            _remove_created_directory(context.output_dir, resolved_output_root)
         raise PrepareDataError(str(exc)) from exc
 
     return PreparedData(
@@ -144,6 +165,7 @@ def prepare_data(
         processed_dir=destination,
         split_manifest_path=split_manifest_path,
         partition_manifest_path=partition_manifest_path,
+        processed_index_path=processed_index_path,
         run_manifest_path=run_manifest_path,
         sample_counts=sample_counts,
     )
@@ -254,3 +276,11 @@ def _write_json(path: Path, payload: object) -> None:
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _remove_created_directory(path: Path, expected_parent: Path) -> None:
+    resolved = path.resolve()
+    parent = expected_parent.resolve()
+    if resolved.parent != parent or not resolved.is_dir():
+        return
+    shutil.rmtree(resolved)
