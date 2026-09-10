@@ -7,10 +7,14 @@ from copy import deepcopy
 from pathlib import Path
 
 import pandas as pd
+import pytest
+import torch
 import yaml
 
 from src.cli import main
+from src.data.loading import DataLoaderConfig, ProcessedDatasetReader, create_dataloaders
 from src.experiments import RunContext
+from src.models.base import ModelContract
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -86,6 +90,8 @@ def test_prepare_data_cli_builds_split_partition_and_run_manifests(
     )
 
     assert split_manifest["splits"]["train"]["sample_count"] > 0
+    assert split_manifest["cache_identity"]["key"].startswith("processed-v1-")
+    assert len(split_manifest["artifacts"]) == 9
     assert partition_manifest["num_clients"] >= 1
     assert run_manifest["split_id"] == split_manifest["split_id"]
     assert run_manifest["partition"] == partition_manifest
@@ -175,3 +181,59 @@ def test_prepare_data_rolls_back_new_run_and_processed_split_on_manifest_failure
     assert not (output_root / "rollback-run").exists()
     processed_root = tmp_path / "processed"
     assert not processed_root.exists() or not any(processed_root.iterdir())
+
+
+@pytest.mark.parametrize("num_workers", [0, 1])
+def test_prepare_data_output_feeds_deterministic_processed_loaders(
+    tmp_path: Path,
+    config_bundle: dict[str, dict[str, object]],
+    monkeypatch,
+    num_workers: int,
+) -> None:
+    monkeypatch.chdir(PROJECT_ROOT)
+    data_path = _write_data_config(tmp_path, config_bundle)
+    assert (
+        main(
+            [
+                "prepare-data",
+                "--data",
+                str(data_path),
+                "--output-root",
+                _relative(tmp_path / "runs"),
+                "--run-id",
+                f"loader-{num_workers}",
+            ]
+        )
+        == 0
+    )
+    split_directory = next((tmp_path / "processed").iterdir())
+    data_config = yaml.safe_load(data_path.read_text(encoding="utf-8"))
+    data = ProcessedDatasetReader().load(split_directory, data_config=data_config)
+    contract = ModelContract.from_model_config(config_bundle["model"]["model"])
+
+    def consume() -> tuple[list[int], dict[str, list[int]]]:
+        loaders = create_dataloaders(
+            data,
+            contract=contract,
+            config=DataLoaderConfig(batch_size=3, num_workers=num_workers, seed=91),
+        )
+        train_order: list[int] = []
+        batch_sizes: dict[str, list[int]] = {}
+        for split, loader in loaders.items():
+            batches = list(loader)
+            batch_sizes[split] = [batch.history.shape[0] for batch in batches]
+            for batch in batches:
+                batch.validate(contract)
+                assert batch.history.dtype == batch.future.dtype == torch.float32
+                assert all(meta["split"] == split for meta in batch.meta)
+                if split == "train":
+                    train_order.extend(int(meta["vehicle_id"]) for meta in batch.meta)
+        return train_order, batch_sizes
+
+    first_order, first_sizes = consume()
+    second_order, second_sizes = consume()
+    assert first_order == second_order
+    assert first_sizes == second_sizes
+    assert sum(first_sizes["train"]) == len(data.datasets["train"])
+    assert sum(first_sizes["validation"]) == len(data.datasets["validation"])
+    assert sum(first_sizes["test"]) == len(data.datasets["test"])
