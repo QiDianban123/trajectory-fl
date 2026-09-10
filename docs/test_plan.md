@@ -17,6 +17,9 @@
 - `tests/unit/test_partition.py`：5-RSU 边界、Non-IID 分配、合并、并集/交集和稳定重建。
 - `tests/integration/test_prepare_data_cli.py`：生产 CLI 的成功、缺输入、重复 run、事务回滚和 manifest 对齐。
 - `tests/system/test_s1_exit_smoke.py`：一条命令生成匿名数据并验证三个 split、默认 5-RSU 和运行产物索引。
+- `tests/unit/test_lstm_seq2seq.py`：S2-C LSTM 输出 shape/dtype/device、有限值、梯度及错误输入。
+- `tests/unit/test_torch_trainer.py`：S2-C 小样本过拟合、no_grad、梯度裁剪、best epoch 和
+  checkpoint 保存/恢复。
 
 运行质量门禁：
 
