@@ -79,6 +79,9 @@ Ruff：通过
 
 pytest：定向 `25 passed`（LSTM、TorchTrainer 与配置校验）；全量 `231 passed`
 
+与 S2-B 分支同步后：B/C 联合定向 `40 passed`；合并态全量 `251 passed`；
+Ruff（`src tests scripts`）和配置校验通过。C 的 MR 必须在 B 合入 `dev` 后再合并。
+
 配置/冒烟检查：配置校验通过；小样本 loss 降幅和 checkpoint round-trip 通过自动化测试
 
 评审结论：待 E 主评审、A 第二评审
