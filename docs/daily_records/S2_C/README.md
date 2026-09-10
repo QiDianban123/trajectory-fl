@@ -77,7 +77,7 @@ MR：待创建，目标 `dev`
 
 Ruff：通过
 
-pytest：定向 `29 passed`；全量 `231 passed`
+pytest：定向 `25 passed`（LSTM、TorchTrainer 与配置校验）；全量 `231 passed`
 
 配置/冒烟检查：配置校验通过；小样本 loss 降幅和 checkpoint round-trip 通过自动化测试
 
