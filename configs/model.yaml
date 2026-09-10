@@ -17,6 +17,7 @@ training:
   loss: mse
   optimizer: adam
   learning_rate: 0.001
+  gradient_clip_norm: 1.0
   batch_size: 32
   epochs: 1
   initialization:

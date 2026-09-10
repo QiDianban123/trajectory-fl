@@ -1,6 +1,7 @@
 # D1 模型输入输出草案
 
-**负责人：** C；**状态：** D2 已冻结。完整公共契约见 `docs/design.md` 的“模型与通用训练契约”；本文件保留 D1 决策来源。
+**负责人：** C；**状态：** D2 已冻结，S2-C-01 已实现。完整公共契约见 `docs/design.md`
+的“模型与通用训练契约”；本文件保留 D1 决策来源并指向当前实现。
 
 | 项目 | 草案 |
 |---|---|
@@ -12,4 +13,6 @@
 | 推理 | `eval()` + `no_grad()`，结果由评价层反归一化后计算 ADE/FDE |
 | 序列化 | 使用模型 `state_dict`；配置保存结构和 `T_h/T_f` |
 
-实现入口见 `src/models/base.py`。D2 必须明确 batch 是否含 mask、是否预测绝对坐标或增量、默认 `T_h/T_f` 和 dtype/device 约定。
+冻结契约入口见 `src/models/base.py`，具体网络见 `src/models/lstm_seq2seq.py`，共享训练实现见
+`src/training/torch_trainer.py`。当前实现使用固定长度、无 mask、归一化绝对坐标；Trainer
+负责 MSE、Adam、device、梯度裁剪和 checkpoint，评价层负责反归一化后的 ADE/FDE。

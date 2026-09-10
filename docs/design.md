@@ -109,6 +109,21 @@ P0 预测模型的 `ModelContract` 固定为：输入 `history: torch.float32 [B
 该增量不修改模型、Trainer、评价算法或训练循环。正式证据见
 [S2-B 交付记录](daily_records/S2_B/README.md)。
 
+#### S2-C 实现补充：LSTM Seq2Seq 与 TorchTrainer（待团队评审）
+
+- `LSTMSeq2Seq.from_model_config(model_section)` 实现冻结的绝对位置预测契约；模型只拥有
+  网络参数和 forward，不读取文件、不创建优化器或计算物理指标。
+- `TorchTrainerConfig.from_config(model_config, seed, split_id, device)` 将训练配置与运行级
+  seed/split 绑定；`gradient_clip_norm` 是必需的正有限配置项。
+- `TorchTrainer` 是 Centralized、Local-only 和 Federated 共用的 MSE/Adam 训练实现，负责
+  device、train/eval、no_grad、反向传播、梯度裁剪和 best epoch。
+- fit 从调用者提供的 state 深拷贝开始，返回的 checkpoint state 固定转移到 CPU；恢复时
+  严格校验 split、模型配置、state key/shape/dtype 和有限值。
+- `evaluate` 只返回归一化空间的 loss 和 sample count；inverse-transform、ADE/FDE 和图表
+  继续由评价层负责。
+
+用法与验证证据见 [S2-C 交付记录](daily_records/S2_C/README.md)。
+
 ### 3.6 联邦接口契约（D2-D 确认）
 
 Client 接收带 round 与 `global_state_id` 的不可变下发请求，未来只通过共享 Trainer 完成本地训练，并返回一个 `ClientUpdate` 或显式 `ClientFailure`。Server 负责唯一客户端选择、可用性检查和“一名选中客户端对应一个结果”的完整性；失败不得静默跳过。
