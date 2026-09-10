@@ -11,6 +11,7 @@ from src.models.base import (
     ModelContract,
     TrajectoryPredictor,
     TrajectoryTensor,
+    require_torch,
     validate_checkpoint_payload,
     validate_future_tensor,
     validate_history_tensor,
@@ -19,18 +20,35 @@ from src.models.base import (
 
 @dataclass(frozen=True)
 class TrajectoryBatch:
-    """One normalized batch, with the caller retaining DataLoader ownership."""
+    """One normalized batch, with the caller retaining DataLoader ownership.
+
+    ``meta`` follows tensor row order. Its empty default preserves callers of the
+    D2 two-field constructor; the S1 collate boundary always supplies metadata.
+    """
 
     history: TrajectoryTensor
     future: TrajectoryTensor
+    meta: tuple[Mapping[str, object], ...] = ()
 
     def validate(self, contract: ModelContract) -> None:
-        validate_history_tensor(self.history, contract)
-        if self.history.shape[0] != self.future.shape[0]:
-            raise ValueError("history and future batch sizes must match")
-        validate_future_tensor(self.future, contract)
+        torch = require_torch()
+        # Check devices before finite-value operations (e.g. on a meta tensor).
+        for name in ("history", "future"):
+            if not isinstance(getattr(self, name), torch.Tensor):
+                raise ValueError(f"{name} must be a torch.Tensor")
         if self.history.device != self.future.device:
             raise ValueError("history and future must be on the same device")
+        if self.history.device.type == "meta":
+            raise ValueError("trajectory batches require a device with materialized values")
+        validate_history_tensor(self.history, contract)
+        validate_future_tensor(self.future, contract)
+        if self.history.shape[0] != self.future.shape[0]:
+            raise ValueError("history and future batch sizes must match")
+        if self.meta:
+            if len(self.meta) != self.history.shape[0]:
+                raise ValueError("meta must contain one mapping per sample")
+            if not all(isinstance(item, Mapping) for item in self.meta):
+                raise ValueError("meta must contain one mapping per sample")
 
 
 @dataclass(frozen=True)

@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from src.data.prepare import PrepareDataError, prepare_data
 from src.utils.config import ConfigError, validate_config_bundle
 
 DEFAULT_DATA_CONFIG = Path("configs/data.yaml")
@@ -25,8 +26,18 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_CONFIG)
     validate_parser.add_argument("--experiment", type=Path, default=DEFAULT_EXPERIMENT_CONFIG)
 
+    prepare_parser = subparsers.add_parser(
+        "prepare-data", help="prepare the selected trajectory dataset"
+    )
+    prepare_parser.add_argument("--data", type=Path, default=DEFAULT_DATA_CONFIG)
+    prepare_parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_CONFIG)
+    prepare_parser.add_argument("--experiment", type=Path, default=DEFAULT_EXPERIMENT_CONFIG)
+    prepare_parser.add_argument("--raw-dir", type=Path)
+    prepare_parser.add_argument("--processed-dir", type=Path)
+    prepare_parser.add_argument("--output-root", type=Path)
+    prepare_parser.add_argument("--run-id")
+
     for name, help_text in (
-        ("prepare-data", "prepare the selected trajectory dataset (scheduled for D3)"),
         ("train", "run one training mode (scheduled for D6-D10)"),
         ("compare", "summarize three-mode results (scheduled for D11-D13)"),
     ):
@@ -49,7 +60,29 @@ def main(argv: list[str] | None = None) -> int:
         run = bundle["experiment"]["run"]
         print(f"Configuration valid: run={run['name']} mode={run['mode']} seed={run['seed']}")
         return 0
-    if args.command in {"prepare-data", "train", "compare"}:
+    if args.command == "prepare-data":
+        try:
+            bundle = validate_config_bundle(args.data, args.model, args.experiment)
+            prepared = prepare_data(
+                bundle,
+                project_root=Path.cwd(),
+                raw_dir=args.raw_dir,
+                processed_dir=args.processed_dir,
+                output_root=args.output_root,
+                run_id=args.run_id,
+            )
+        except (ConfigError, PrepareDataError) as exc:
+            print(f"Prepare-data error: {exc}", file=sys.stderr)
+            return 2
+        print(f"Prepared highD data: split_id={prepared.split_id}")
+        print(f"Samples: {dict(prepared.sample_counts)}")
+        print(f"Processed data: {prepared.processed_dir}")
+        print(f"Split manifest: {prepared.split_manifest_path}")
+        print(f"Partition manifest: {prepared.partition_manifest_path}")
+        print(f"Processed index: {prepared.processed_index_path}")
+        print(f"Run manifest: {prepared.run_manifest_path}")
+        return 0
+    if args.command in {"train", "compare"}:
         print(
             f"Command '{args.command}' is defined by the D2 interface but is not implemented yet; "
             "see the project schedule.",

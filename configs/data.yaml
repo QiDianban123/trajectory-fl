@@ -25,6 +25,13 @@ split:
   test: 0.15
   seed: 42
 
+partition:
+  num_clients: 5
+  axis: x
+  client_id_prefix: rsu_
+  region_edges: null
+  min_samples_per_client: 1
+
 normalization:
   method: standard
   fit_split: train
