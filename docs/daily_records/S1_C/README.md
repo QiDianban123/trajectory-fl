@@ -1,5 +1,9 @@
 # S1-C-01 交付与评审准备记录
 
+> 后续状态（2026-09-10）：B Dataset 与 A `prepare-data` 已合入 `dev`，生产
+> 编排会调用本模块的 batch bridge；最终 S1 证据见
+> [MS2 S1 准出报告](../../milestones/MS2_S1_exit_report.md)。
+
 本目录集中保存本次 S1-C 文档：[任务卡及完成记录](task_card.md)。
 后续 C/D 评审发现的三项缺陷修复及最新 128 项回归结果见 [评审修复记录](review_fixes.md)。
 公共接口说明与测试计划分别保留在 [设计文档](../../design.md) 和 [测试计划](../../test_plan.md)。
