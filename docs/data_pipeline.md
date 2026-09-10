@@ -35,6 +35,32 @@ processed/<split_id>/
 
 `split_manifest.json` 是全量划分索引，记录 `data_version`、`split_id`、三个 split 的样本数、处理统计和 scaler 位置。保存前会校验三个 Dataset 的 split、split_id 与窗口规格一致；单 split 的 scaler 也必须是有限、正尺度的 train scaler。`manifest.json` 记录单 split 的样本元数据，`load_dataset` 会重新校验缓存中的 scaler。NPZ 不使用 pickle。
 
+## S2 processed reader 与 DataLoader
+
+`ProcessedDatasetReader.load` 是训练侧读取完整 processed 数据的入口。调用者必须提供
+当前已校验的 data config；读取器使用 `data_version`、`split_id` 和数据语义配置摘要
+核对 `cache_identity`。语义配置包含数据集坐标契约、sequence、split、partition、
+normalization 和 preprocessing，但不包含 raw/processed 等机器路径。
+
+写入的 `split_manifest.json` 同时记录每个 split 的 `manifest.json`、`samples.npz` 和
+`scaler.npz` 的 SHA-256。读取时会拒绝以下情况：
+
+- S1 旧格式或缺少 cache identity；
+- 期望的 data version / split ID 与产物不符；
+- 配置摘要不符、文件缺失或校验值不符；
+- 空 split、错误 dtype/shape、metadata 身份不一致；
+- 三个 split 的窗口、统计或 train scaler 不一致；
+- manifest 中的绝对路径或目录逃逸。
+
+读取器只在当前进程缓存已验证且只读的样本数组。每次命中前比较父 manifest 和全部
+关键文件的大小及修改时间，文件变化后重新校验，不复用旧对象。
+
+`create_dataloaders` 使用现有 `collate_trajectory_samples` 构造 CPU float32
+`TrajectoryBatch`。train 可按运行 seed 确定性 shuffle；validation/test 始终保持
+顺序且绝不丢弃尾批。batch size 来自 model config，worker 数和 seed 来自 experiment
+config。`ProcessedDataBundle.inverse_transform` 提供 train-only scaler 的只读反变换入口，
+供后续评价适配器在米制坐标计算指标。
+
 ## 最小调用示例
 
 ```python

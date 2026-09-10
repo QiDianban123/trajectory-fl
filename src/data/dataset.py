@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
 
 from src.data.adapters import SplitName, TrajectorySample
+from src.data.cache import processed_cache_key, semantic_config_digest
 from src.data.preprocess import TrainingCoordinateScaler, WindowSpec
 
 
@@ -119,9 +121,7 @@ def load_dataset(
     if len(metadata) != len(histories) or len(histories) != len(futures):
         raise ValueError("dataset manifest and sample arrays have different lengths")
     samples = [
-        TrajectorySample(
-            history=history.astype(np.float32), future=future.astype(np.float32), meta=meta
-        )
+        TrajectorySample(history=history, future=future, meta=meta)
         for history, future, meta in zip(histories, futures, metadata, strict=True)
     ]
     dataset = TrajectoryDataset(
@@ -148,6 +148,7 @@ def save_split_datasets(
     scaler: TrainingCoordinateScaler,
     stats: dict[str, object],
     data_version: str,
+    data_config: Mapping[str, object] | None = None,
 ) -> Path:
     """Persist all splits and write one manifest describing the complete split."""
 
@@ -160,6 +161,22 @@ def save_split_datasets(
     destination.mkdir(parents=True, exist_ok=True)
     for split in ("train", "validation", "test"):
         save_dataset(datasets[split], destination / split, scaler=scaler, stats=stats)
+    cache_identity = None
+    if data_config is not None:
+        cache_identity = {
+            "schema_version": 1,
+            "semantic_config_digest": semantic_config_digest(data_config),
+            "key": processed_cache_key(
+                data_version=data_version,
+                split_id=datasets["train"].split_id,
+                data_config=data_config,
+            ),
+        }
+    artifact_paths = [
+        f"{split}/{name}"
+        for split in ("train", "validation", "test")
+        for name in ("manifest.json", "samples.npz", "scaler.npz")
+    ]
     manifest = {
         "schema_version": 1,
         "dataset": "highd",
@@ -171,6 +188,10 @@ def save_split_datasets(
         },
         "scaler": "train/scaler.npz",
         "stats": stats,
+        "cache_identity": cache_identity,
+        "artifacts": {
+            path: {"sha256": _file_sha256(destination / path)} for path in artifact_paths
+        },
     }
     _atomic_write_json(destination / "split_manifest.json", manifest)
     return destination
@@ -232,3 +253,11 @@ def _atomic_savez(path: Path, **arrays: np.ndarray) -> None:
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

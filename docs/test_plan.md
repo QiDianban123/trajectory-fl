@@ -10,6 +10,10 @@
 - `tests/unit/test_batching.py`：S1-C 单样本/批转换、错误输入、metadata 复制及 device 前置校验。
 - `tests/integration/test_data_model_bridge.py`：S1-C 现有 Dataset → DataLoader → ModelContract，
   覆盖三个 split、spawn worker 与尾批；只验证 AT-01 的桥接部分，不代表完整 highD 验收。
+- `tests/unit/test_processed_data.py`：S2-B cache identity、版本/配置失效、文件校验、
+  空 split、跨 split 一致性、inverse-transform 和确定性 batch。
+- `tests/integration/test_prepare_data_cli.py`：除 S1 CLI 事务外，验证生产 processed 产物
+  可由 S2 reader 在 0/1 worker 下重建为符合 ModelContract 的稳定 batch。
 - `tests/unit/test_federated_contracts.py`：ClientUpdate、失败记录、state_dict、样本数与非浮点 buffer 策略。
 - `tests/unit/test_metrics.py`、`test_evaluation_contracts.py`：米制 ADE/FDE、JSON/CSV schema 与图表输出路径。
 - `tests/unit/test_utils.py`：固定随机源、路径逃逸拒绝、run 输出目录、结构化日志和共享夹具。

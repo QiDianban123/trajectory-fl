@@ -94,6 +94,21 @@ P0 预测模型的 `ModelContract` 固定为：输入 `history: torch.float32 [B
 该增量不修改数据层、ModelContract、配置或 Trainer 的 fit/evaluate 签名。
 用法与验证证据见 [S1-C 交付记录](daily_records/S1_C/README.md)；公共接口增量尚待 E/A 评审及 B 对接确认。
 
+#### S2-B 实现补充：processed reader 与确定性 DataLoader（待团队评审）
+
+- `src.data.ProcessedDatasetReader` 一次读取并交叉校验 train/validation/test，拒绝空
+  split、旧 cache identity、版本/配置不符、损坏文件和不一致 manifest/scaler。
+- processed cache key 由 `data_version`、`split_id` 和数据语义配置摘要生成；路径与
+  DataLoader 性能参数不属于数据语义。关键 processed 文件另有 SHA-256 完整性校验。
+- `DataLoaderConfig.from_config_bundle` 读取现有 `training.batch_size`、
+  `execution.num_workers` 和 `run.seed`，没有新增或覆盖配置字段。
+- `create_dataloaders` 复用 S1-C collate；train shuffle 由 seed 确定，holdout 保序且
+  保留尾批。DataLoader 与 device 迁移仍由训练调用方持有。
+- `ProcessedDataBundle.inverse_transform` 只委托保存的 train scaler，不计算评价指标。
+
+该增量不修改模型、Trainer、评价算法或训练循环。正式证据见
+[S2-B 交付记录](daily_records/S2_B/README.md)。
+
 ### 3.6 联邦接口契约（D2-D 确认）
 
 Client 接收带 round 与 `global_state_id` 的不可变下发请求，未来只通过共享 Trainer 完成本地训练，并返回一个 `ClientUpdate` 或显式 `ClientFailure`。Server 负责唯一客户端选择、可用性检查和“一名选中客户端对应一个结果”的完整性；失败不得静默跳过。
