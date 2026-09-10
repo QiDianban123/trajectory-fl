@@ -116,7 +116,7 @@ def _positive_number(value: Any, name: str, *, allow_zero: bool = False) -> None
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         valid = False
     else:
-        valid = value >= 0 if allow_zero else value > 0
+        valid = isfinite(value) and (value >= 0 if allow_zero else value > 0)
     if not valid:
         qualifier = "non-negative" if allow_zero else "positive"
         raise ConfigError(f"{name} must be a {qualifier} number")
@@ -333,6 +333,7 @@ def _validate_model(config: Mapping[str, Any]) -> None:
             "loss",
             "optimizer",
             "learning_rate",
+            "gradient_clip_norm",
             "batch_size",
             "epochs",
             "initialization",
@@ -342,6 +343,7 @@ def _validate_model(config: Mapping[str, Any]) -> None:
     if training["loss"] != "mse" or training["optimizer"] != "adam":
         raise ConfigError("P0 training loss/optimizer must be mse/adam")
     _positive_number(training["learning_rate"], "training.learning_rate")
+    _positive_number(training["gradient_clip_norm"], "training.gradient_clip_norm")
     _positive_int(training["batch_size"], "training.batch_size")
     _positive_int(training["epochs"], "training.epochs")
 
