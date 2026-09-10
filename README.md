@@ -1,6 +1,6 @@
 # 基于联邦学习的车辆轨迹预测系统
 
-本仓库是“基于联邦学习的车辆轨迹预测系统”的独立项目根目录。D1 已完成需求基线和数据选型；D2 已完成架构、配置与公共接口冻结，D3 开始实现数据管线。
+本仓库是“基于联邦学习的车辆轨迹预测系统”的独立项目根目录。D1 已完成需求基线和数据选型，D2 已完成架构与公共接口冻结，S1 已形成可验证的数据闭环。
 
 ## D1 已确定的范围
 
@@ -19,9 +19,14 @@ python -m pytest -q
 python -m src.cli status
 python -m src.cli validate-config
 python scripts\check_environment.py
+python scripts\run_s1_smoke.py
 ```
 
 若尚未安装 Python，请先安装 Python 3.10 或更新版本，并重新打开终端。准备数据时，原始 highD CSV 放入 `data/raw/`；不要提交原始数据。
+
+`run_s1_smoke.py` 会生成匿名 highD 风格小样例，调用生产 `prepare-data`，并验证
+train/validation/test 互斥、默认 5-RSU 划分及完整 manifest。每次运行使用新的
+`outputs/s1-smoke-<UTC time>/`，不会覆盖历史结果。
 
 ## S1 数据诊断图
 
@@ -55,11 +60,12 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 完成工作后可运行 `deactivate` 退出虚拟环境。始终使用 `python -m pytest`，以确保 pytest 使用当前 `.venv` 的解释器和依赖。
 
-## D2 配置与命令契约
+## 配置与命令契约
 
 - `configs/data.yaml`、`configs/model.yaml` 和 `configs/experiments/smoke.yaml` 是最小可校验配置。
 - `python -m src.cli validate-config` 校验 YAML schema 以及数据/模型的序列维度一致性。
-- `prepare-data`、`train`、`compare` 已保留为后续实现入口；当前调用会明确提示未实现并返回非零退出码。
+- `python -m src.cli prepare-data` 执行 highD 数据准备；支持输入、processed、运行输出和 run ID 覆盖，成功返回 0，用户可修复错误返回 2。
+- `train`、`compare` 仍是后续阶段入口，当前会明确提示未实现并返回非零退出码。
 - 架构、Tensor、配置、输出目录和结果格式见 [D2 设计基线](docs/design.md)。
 - 运行产物包括 `metrics.json`、`metrics.csv`、`figures/` 和 `checkpoints/`；JSON 是结果事实源，CSV 是自动生成的扁平视图。
 
@@ -69,15 +75,15 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 ```powershell
 python -m pytest -q
-python -m ruff check src tests
+python -m ruff check src tests scripts
 python -m src.cli validate-config
 ```
 
 GitHub Actions 的 Quality Gate 使用 Ubuntu / Python 3.10，并保存 JUnit 报告。
 本地可设置 `MPLBACKEND=Agg` 使用无界面绘图，再运行上述相同检查；需要报告时
 运行 `python -m pytest -q --junitxml=outputs/quality-gate.xml`。
-当前测试范围与尚未完成的 MS2 数据管线验收见
-[S1-F 质量门禁记录](docs/daily_records/S1_F/review_fixes.md)。
+S1 的准出范围、自动化证据和人工审批状态见
+[MS2 S1 准出报告](docs/milestones/MS2_S1_exit_report.md)。
 
 运行入口应在创建模型、数据划分或训练前调用 `set_global_seed(seed)`。每个 run 使用唯一 `run_id`，其配置、元数据、JSON 日志、指标、检查点和图表保存在 `outputs/<run_id>/`；已存在的 run ID 会被拒绝，避免覆盖结果。
 

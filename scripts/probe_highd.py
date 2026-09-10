@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 REQUIRED_COLUMNS = {"id", "frame", "x", "y"}
 
 
@@ -29,7 +28,10 @@ def main() -> int:
     args = parser.parse_args()
     files = sorted(args.raw_dir.glob("*_tracks.csv"))
     if not files:
-        print(f"No '*_tracks.csv' file found in {args.raw_dir}. This is expected before data download.")
+        print(
+            f"No '*_tracks.csv' file found in {args.raw_dir}. "
+            "This is expected before data download."
+        )
         return 0
     for file in files:
         report = inspect_csv(file)

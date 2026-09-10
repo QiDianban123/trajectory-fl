@@ -1,4 +1,4 @@
-# D2 测试计划
+# D2—S1 测试计划
 
 **负责人：** F；**版本：** V1.0-D2。
 
@@ -13,18 +13,23 @@
 - `tests/unit/test_federated_contracts.py`：ClientUpdate、失败记录、state_dict、样本数与非浮点 buffer 策略。
 - `tests/unit/test_metrics.py`、`test_evaluation_contracts.py`：米制 ADE/FDE、JSON/CSV schema 与图表输出路径。
 - `tests/unit/test_utils.py`：固定随机源、路径逃逸拒绝、run 输出目录、结构化日志和共享夹具。
+- `tests/unit/test_highd_adapter.py`：字段映射、异常拒绝、group-first split、train-only scaler、持久化和损坏缓存。
+- `tests/unit/test_partition.py`：5-RSU 边界、Non-IID 分配、合并、并集/交集和稳定重建。
+- `tests/integration/test_prepare_data_cli.py`：生产 CLI 的成功、缺输入、重复 run、事务回滚和 manifest 对齐。
+- `tests/system/test_s1_exit_smoke.py`：一条命令生成匿名数据并验证三个 split、默认 5-RSU 和运行产物索引。
 
 运行质量门禁：
 
 ```powershell
 python -m pytest -q
-python -m ruff check src tests
+python -m ruff check src tests scripts
 python -m src.cli validate-config
 ```
 
 依赖版本由 `requirements.txt` 管理。测试报告只记录命令与结果，不记录设备路径、账户或其他机器专属信息。
 
-本次 D2 基线已验证 `python -m pytest -q` 与 `python -m src.cli validate-config`；Ruff 检查在安装 `requirements.txt` 中声明的 Ruff 后执行。该前置条件不影响 pytest 的结果记录。
+D2 基线的历史结果保留在 D2 记录中。S1 最终范围、命令和证据以
+[MS2 S1 准出报告](milestones/MS2_S1_exit_report.md)为准。
 
 ## 后续测试挂钩
 

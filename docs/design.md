@@ -126,7 +126,7 @@ Local-only 每个客户端必须使用全新模型实例和同一基线 state �
 |---|---|---|
 | `status` | 输出当前基线状态 | A/F 维护 |
 | `validate-config` | 加载并校验 data/model/experiment 配置；失败返回 2 | A/F |
-| `prepare-data` | 明确返回“尚未实现”和退出码 2 | B/A，D3 |
+| `prepare-data` | 校验配置并串联 adapter、split/scaler、batch、5-RSU、持久化与 run manifest；成功返回 0，可修复错误返回 2 | A/B/C/D/G，S1 |
 | `train` | 明确返回“尚未实现”和退出码 2 | A/C/D，D6—D10 |
 | `compare` | 明确返回“尚未实现”和退出码 2 | E/A/G，S4（D9—D10） |
 

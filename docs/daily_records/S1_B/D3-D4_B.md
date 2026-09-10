@@ -1,8 +1,8 @@
 # B 角色 D3-D4 工作过程记录
 
-**角色：** B，数据工程开发  
-**任务：** S1-B-01 highD 数据管线  
-**日期：** 2026-09-06  
+**角色：** B，数据工程开发
+**任务：** S1-B-01 highD 数据管线
+**日期：** 2026-09-06
 **关联：** F1、F4、AT-01、AT-04
 
 ## 一、任务清单对应情况
@@ -16,7 +16,7 @@
 | 必需列检查 | 已完成 | 缺少 `id`、`frame`、`x`、`y` 时明确报错 |
 | 缺失值、非有限值处理 | 已完成 | 整条轨迹拒绝，并记录拒绝轨迹数和行数 |
 | 重复 frame 处理 | 已完成 | 整条轨迹拒绝 |
-| 乱序 frame 处理 | 已完成 | 轨迹按 frame 排序后再生成窗口 |
+| 乱序 frame 处理 | 已完成 | 重复或乱序 frame 整条拒绝并记录原因，不静默排序 |
 | 统计信息 | 已完成 | `input_rows`、`valid_rows`、`rejected_tracks`、`rejected_rows`、split 计数 |
 | 正常表头、缺列、乱序、重复、NaN/Inf、短轨迹测试 | 基础专项测试已完成 | [tests/unit/test_highd_adapter.py](../../tests/unit/test_highd_adapter.py) |
 
