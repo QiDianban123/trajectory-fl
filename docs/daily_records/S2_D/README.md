@@ -51,6 +51,19 @@ update = client.local_train(dispatch)
 - 配置检查：`Configuration valid: run=d2-smoke mode=smoke seed=42`
 - `git diff --check`：通过（忽略 worktree 既有 S1-B CRLF 工作区噪音）
 
+复审修复后新增真实 dropout LSTM 的客户端顺序测试，并隔离 Python、NumPy、Torch
+CPU/CUDA 随机状态；训练和验证 batches 现在必须可重复迭代。DataLoader 的 collate 导入
+调整为工厂内延迟导入，独立 Python 进程可以直接导入 `TorchTrainer`。修复后定向测试
+`14 passed`，全量测试 `265 passed`。
+
+## 复审修复
+
+- 每次本地训练隔离 Python、NumPy、Torch CPU/CUDA 随机状态，并使用 Trainer 配置中的
+  seed；真实启用 dropout 的 LSTM 已验证客户端执行顺序不影响各自结果。
+- adapter 入口要求训练和验证 batches 可重复迭代，避免一次性 iterator 在后续轮次耗尽。
+- DataLoader 的 collate 导入延迟到工厂调用时，解除 `src.data` 与 `src.training` 的包初始化
+  循环；独立 Python 进程可直接导入 `TorchTrainer`。
+
 ## 完成报告
 
 实际 Commit SHA：`474129f`、`e04f90c`（本文档提交见当前分支 HEAD）
@@ -59,7 +72,7 @@ MR：待创建，目标 `dev`
 
 Ruff：`ruff check src tests` 通过
 
-pytest：定向 `26 passed`；全量 `262 passed`
+pytest：初始定向 `26 passed`；复审修复定向 `14 passed`；最终全量 `265 passed`
 
 配置/冒烟检查：配置校验通过；真实 `TorchTrainer` → `ClientUpdate` →
 `AggregationRequest` 集成通过
