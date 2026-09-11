@@ -28,4 +28,7 @@ manifest；同一个 run_id 不会覆盖旧目录。
 - fake Trainer 覆盖 load → loaders → model → trainer → fit → checkpoint → evaluate 编排顺序。
 - fake 失败路径覆盖 failed status、错误信息、重复 run 拒绝和 manifest 保留。
 - 真实小样本 smoke 使用真实 LSTM、TorchTrainer、DataLoader、baseline 和 E 评价接口。
-- 最终 pytest/Ruff/config/diff-check 结果在提交后补录。
+- 定向测试：`26 passed`；全量测试：`286 passed`。
+- 真实 smoke：loss `12.501712322235107`、LSTM ADE `4.839854313775069 m`、
+  FDE `5.3568157744401095 m`；常速度 baseline ADE/FDE 均为 `0.0 m`。
+- Ruff、配置校验和 `git diff --check` 通过。
