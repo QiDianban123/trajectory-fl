@@ -5,8 +5,10 @@ from src.evaluation.centralized import (
     CentralizedEvaluationRequest,
     InverseTransformScaler,
     LossHistory,
+    PhysicalEvaluation,
     PhysicalTrajectoryBatch,
     evaluate_centralized,
+    evaluate_prediction_arrays,
     inverse_transform_batch,
 )
 from src.evaluation.data_diagnostics import (
@@ -18,6 +20,7 @@ from src.evaluation.data_diagnostics import (
     plot_truth_trajectory,
 )
 from src.evaluation.metrics import ade, compute_metrics, fde
+from src.evaluation.prediction import PredictionCollection, collect_predictions
 from src.evaluation.result_store import ResultRecord, ResultStore, write_csv, write_json
 from src.evaluation.visualization import (
     plot_convergence,
@@ -32,13 +35,17 @@ __all__ = [
     "CentralizedEvaluationRequest",
     "InverseTransformScaler",
     "LossHistory",
+    "PhysicalEvaluation",
     "PhysicalTrajectoryBatch",
+    "PredictionCollection",
     "ResultRecord",
     "ResultStore",
     "ade",
     "compute_metrics",
+    "collect_predictions",
     "diagnostic_file_stem",
     "evaluate_centralized",
+    "evaluate_prediction_arrays",
     "fde",
     "generate_data_diagnostic_figures",
     "inverse_transform_batch",
