@@ -65,7 +65,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 - `configs/data.yaml`、`configs/model.yaml` 和 `configs/experiments/smoke.yaml` 是最小可校验配置。
 - `python -m src.cli validate-config` 校验 YAML schema 以及数据/模型的序列维度一致性。
 - `python -m src.cli prepare-data` 执行 highD 数据准备；支持输入、processed、运行输出和 run ID 覆盖，成功返回 0，用户可修复错误返回 2。
-- `train`、`compare` 仍是后续阶段入口，当前会明确提示未实现并返回非零退出码。
+- `python -m src.cli train --mode centralized` 运行已准备的 processed 数据；CLI 只解析参数、
+  校验配置并调用共享 `CentralizedExperiment`。
 - 架构、Tensor、配置、输出目录和结果格式见 [D2 设计基线](docs/design.md)。
 - 运行产物包括 `metrics.json`、`metrics.csv`、`figures/` 和 `checkpoints/`；JSON 是结果事实源，CSV 是自动生成的扁平视图。
 
@@ -103,3 +104,17 @@ S1 的准出范围、自动化证据和人工审批状态见
 `docs/` 保存 D1 的基线与记录，`scripts/` 保存人工执行入口，`src/` 保存可演进的模块接口和已完成的轻量工具，`tests/` 保存自动化测试。开发任务、风险和当日决策见 `docs/`。
 
 团队协作请遵循 [Git 协作操作手册](docs/git_workflow.md)。
+
+## 集中式 smoke
+
+一条命令生成匿名 highD 风格数据、执行集中式训练并验证核心产物：
+
+```powershell
+python scripts\run_centralized_smoke.py
+```
+
+对已准备的数据，正式入口示例为：
+
+```powershell
+python -m src.cli train --mode centralized --processed-dir data/processed/<split_id> --run-id centralized-001
+```

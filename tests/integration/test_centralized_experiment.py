@@ -50,6 +50,11 @@ def _config(*, epochs: int = 1) -> dict[str, dict[str, Any]]:
                 "gradient_clip_norm": 1.0,
                 "batch_size": 2,
                 "epochs": epochs,
+                "initialization": {
+                    "owner": "experiment_runner",
+                    "strategy": "xavier_uniform",
+                    "share_initial_state": True,
+                },
             },
         },
         "experiment": {
@@ -175,6 +180,11 @@ class _FakeTrainer:
         torch.save(dict(payload), path)
         return path
 
+    def load_checkpoint(self, model: LSTMSeq2Seq, path: Path) -> dict[str, object]:
+        payload = torch.load(path, map_location="cpu", weights_only=True)
+        model.load_state_dict(payload["model_state"], strict=True)
+        return payload
+
 
 def _request(
     tmp_path: Path, bundle: ProcessedDataBundle, run_id: str
@@ -223,6 +233,7 @@ def test_fake_trainer_workflow_order_and_complete_artifacts(tmp_path: Path) -> N
         "metrics.json",
         "metrics.csv",
         "predictions.npz",
+        "training_history.json",
         "manifest.json",
         "checkpoints/best.pt",
         "baseline/metrics.json",

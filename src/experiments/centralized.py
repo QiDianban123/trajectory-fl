@@ -33,6 +33,7 @@ from src.experiments.run_context import RunContext
 from src.federated.training_adapter import clone_model_state
 from src.models.base import ModelContract, require_torch
 from src.models.constant_velocity import ConstantVelocityBaseline
+from src.models.initialization import initialize_model
 from src.models.lstm_seq2seq import LSTMSeq2Seq
 from src.training.centralized import CentralizedTrainingRequest, run_centralized
 from src.training.torch_trainer import TorchTrainer, TorchTrainerConfig
@@ -57,6 +58,7 @@ class CentralizedExperimentRequest:
     code_sha: str | None = None
     expected_data_version: str | None = None
     expected_split_id: str | None = None
+    resume_checkpoint: str | Path | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,7 @@ class CentralizedExperimentOutput:
     record: ResultRecord
     baseline_record: ResultRecord
     loss: float
+    best_epoch: int
     output_dir: Path
     checkpoint_path: Path
     metadata_path: Path
@@ -140,6 +143,13 @@ class CentralizedExperiment:
                 device=bundle["experiment"]["execution"]["device"],
             )
             trainer = self._trainer_factory(contract, trainer_config)
+            if request.resume_checkpoint is not None:
+                loader = getattr(trainer, "load_checkpoint", None)
+                if not callable(loader):
+                    raise TypeError("trainer must expose load_checkpoint for resume")
+                loader(model, request.resume_checkpoint)
+            else:
+                initialize_model(model, bundle["model"]["training"]["initialization"])
             fit_result = run_centralized(
                 trainer,
                 CentralizedTrainingRequest(
@@ -156,14 +166,42 @@ class CentralizedExperiment:
             if not callable(saver):
                 raise TypeError("trainer must expose save_checkpoint for experiment persistence")
             saver(fit_result.checkpoint_payload, checkpoint_path)
+            history_path = context.output_dir / "training_history.json"
+            _write_json(
+                history_path,
+                {
+                    "best_epoch": fit_result.best_epoch,
+                    "epochs": [
+                        {
+                            "epoch": stat.epoch,
+                            "sample_count": stat.sample_count,
+                            "train_loss": stat.train_loss,
+                            "validation_loss": stat.validation_loss,
+                        }
+                        for stat in fit_result.epoch_stats
+                    ],
+                },
+            )
 
             evaluation = trainer.evaluate(model, loaders["test"])
+            prediction_before_restore = collect_predictions(
+                model,
+                loaders["test"],
+                contract=contract,
+                device=getattr(trainer, "device", trainer_config.device),
+            )
+            checkpoint_loader = getattr(trainer, "load_checkpoint", None)
+            if not callable(checkpoint_loader):
+                raise TypeError("trainer must expose load_checkpoint for round-trip verification")
+            checkpoint_loader(model, checkpoint_path)
             prediction = collect_predictions(
                 model,
                 loaders["test"],
                 contract=contract,
                 device=getattr(trainer, "device", trainer_config.device),
             )
+            if not np.array_equal(prediction_before_restore.prediction, prediction.prediction):
+                raise RuntimeError("checkpoint predictions differ from pre-save predictions")
             sample_count = prediction.sample_count
             baseline = ConstantVelocityBaseline(contract)
             torch = require_torch()
@@ -208,6 +246,7 @@ class CentralizedExperiment:
 
             artifact_paths = {
                 "checkpoint": "checkpoints/best.pt",
+                "training_history": history_path.name,
                 "predictions": predictions_path.name,
                 "metadata": metadata_path.name,
                 "log": log_path.name,
@@ -240,6 +279,7 @@ class CentralizedExperiment:
                 context.add_artifact(name, path)
             _require_files(
                 checkpoint_path,
+                history_path,
                 predictions_path,
                 baseline_json,
                 baseline_csv,
@@ -260,6 +300,7 @@ class CentralizedExperiment:
                 record=evaluated.record,
                 baseline_record=baseline_record,
                 loss=float(evaluation.loss),
+                best_epoch=fit_result.best_epoch,
                 output_dir=context.output_dir,
                 checkpoint_path=checkpoint_path,
                 metadata_path=metadata_path,
