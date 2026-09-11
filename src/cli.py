@@ -48,6 +48,9 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--processed-dir", type=Path)
     train_parser.add_argument("--output-root", type=Path)
     train_parser.add_argument("--run-id")
+    train_parser.add_argument("--seed", type=int)
+    train_parser.add_argument("--epochs", type=int)
+    train_parser.add_argument("--batch-size", type=int)
     train_parser.add_argument("--data-version")
     train_parser.add_argument("--split-id")
     train_parser.add_argument("--resume-checkpoint", type=Path)
@@ -115,6 +118,9 @@ def main(argv: list[str] | None = None) -> int:
                 output_root=output_root,
                 run_id=run_id,
                 resume_checkpoint=args.resume_checkpoint,
+                seed=args.seed,
+                epochs=args.epochs,
+                batch_size=args.batch_size,
             )
             result = CentralizedExperiment().run(
                 CentralizedExperimentRequest(
@@ -172,6 +178,9 @@ def _effective_train_bundle(
     output_root: object,
     run_id: str,
     resume_checkpoint: Path | None,
+    seed: int | None,
+    epochs: int | None,
+    batch_size: int | None,
 ) -> dict[str, dict[str, object]]:
     effective = deepcopy(bundle)
     dataset = effective["data"]["dataset"]
@@ -181,10 +190,24 @@ def _effective_train_bundle(
     dataset["processed_dir"] = str(processed_dir)
     run["mode"] = "centralized"
     run["output_root"] = str(output_root)
+    if seed is not None:
+        if seed < 0:
+            raise ValueError("seed must be a non-negative integer")
+        run["seed"] = seed
+    training = effective["model"]["training"]
+    assert isinstance(training, dict)
+    for name, value in (("epochs", epochs), ("batch_size", batch_size)):
+        if value is not None:
+            if value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+            training[name] = value
     effective["experiment"]["runtime"] = {
         "run_id": run_id,
         "processed_dir": str(processed_dir),
         "resume_checkpoint": str(resume_checkpoint) if resume_checkpoint is not None else None,
+        "seed": seed,
+        "epochs": epochs,
+        "batch_size": batch_size,
     }
     return effective
 

@@ -120,3 +120,15 @@ python scripts\run_centralized_smoke.py
 ```powershell
 python -m src.cli train --mode centralized --processed-dir data/processed/<split_id> --run-id centralized-001
 ```
+
+## S2 本地交互控制台
+
+S2-UI-01 提供受控的 Streamlit 页面：
+
+```powershell
+python scripts\run_ui.py
+```
+
+页面只开放已验收的 Centralized smoke 和 Centralized train，S3 的 Local-only/Federated
+操作会显示为禁用状态。命令预览使用参数数组生成，页面不接受任意 shell 命令；已保存的
+metrics、manifest、日志、checkpoint 和图表从 run 目录只读加载。
