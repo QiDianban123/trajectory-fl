@@ -121,6 +121,27 @@ class TorchTrainer:
         *,
         initial_state: Mapping[str, Any],
     ) -> FitResult:
+        """Train reproducibly without advancing the caller's Torch RNG streams."""
+
+        torch = require_torch()
+        cuda_devices = list(range(torch.cuda.device_count())) if torch.cuda.is_available() else []
+        with torch.random.fork_rng(devices=cuda_devices):
+            torch.manual_seed(self.config.seed)
+            return self._fit_impl(
+                model,
+                train_batches,
+                validation_batches,
+                initial_state=initial_state,
+            )
+
+    def _fit_impl(
+        self,
+        model: TrajectoryPredictor,
+        train_batches: Iterable[TrajectoryBatch],
+        validation_batches: Iterable[TrajectoryBatch] | None,
+        *,
+        initial_state: Mapping[str, Any],
+    ) -> FitResult:
         """Train from an isolated state and restore the best epoch into ``model``."""
 
         torch = require_torch()
