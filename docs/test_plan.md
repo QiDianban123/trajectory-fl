@@ -24,6 +24,8 @@
 - `tests/unit/test_lstm_seq2seq.py`：S2-C LSTM 输出 shape/dtype/device、有限值、梯度及错误输入。
 - `tests/unit/test_torch_trainer.py`：S2-C 小样本过拟合、no_grad、梯度裁剪、best epoch 和
   checkpoint 保存/恢复。
+- `tests/unit/test_centralized_evaluation.py`：S2-E 批量反归一化、已知米制 ADE/FDE、shape、
+  dtype、NaN/Inf、sample count、JSON/CSV 同源、artifact 路径及图表重建。
 
 运行质量门禁：
 
