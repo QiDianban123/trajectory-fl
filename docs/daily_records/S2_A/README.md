@@ -2,7 +2,7 @@
 
 - 分支：`feature/s2-a-centralized-entry`
 - 目标：`dev`
-- 依赖：S2-G `CentralizedExperiment`；合并顺序为 G 后 A。
+- 合并状态：S2-G 已先合入，S2-A 已通过 PR #27 合入 `dev`；等待 S2-F/MS3 最终验收。
 
 ## 交付
 

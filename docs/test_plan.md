@@ -1,4 +1,4 @@
-# D2—S1 测试计划
+# D2—S2 测试计划
 
 **负责人：** F；**版本：** V1.0-D2。
 
@@ -26,6 +26,11 @@
   checkpoint 保存/恢复。
 - `tests/unit/test_centralized_evaluation.py`：S2-E 批量反归一化、已知米制 ADE/FDE、shape、
   dtype、NaN/Inf、sample count、JSON/CSV 同源、artifact 路径及图表重建。
+- `tests/unit/test_model_recovery.py`：真实 dropout Trainer 固定 seed、调用方 RNG 恢复及
+  checkpoint 缺失/schema/state key/shape/dtype 恢复失败。
+- `tests/integration/test_centralized_experiment.py`：生产编排、checkpoint 预测一致性、失败
+  metadata、JSON 日志、manifest artifact 实体和 baseline/LSTM 同数据输入。
+- `tests/system/test_s2_centralized_cli_smoke.py`：匿名数据的一条命令 Centralized smoke。
 
 运行质量门禁：
 
@@ -39,6 +44,8 @@ python -m src.cli validate-config
 
 D2 基线的历史结果保留在 D2 记录中。S1 最终范围、命令和证据以
 [MS2 S1 准出报告](milestones/MS2_S1_exit_report.md)为准。
+S2 的最终技术证据与人工评审状态以
+[MS3 S2 准出报告](milestones/MS3_S2_exit_report.md)为准。
 
 ## 后续测试挂钩
 

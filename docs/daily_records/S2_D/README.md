@@ -68,7 +68,7 @@ CPU/CUDA 随机状态；训练和验证 batches 现在必须可重复迭代。Da
 
 实际 Commit SHA：`474129f`、`e04f90c`（本文档提交见当前分支 HEAD）
 
-MR：待创建，目标 `dev`
+MR：已合入 `dev`（PR #24）
 
 Ruff：`ruff check src tests` 通过
 
