@@ -36,7 +36,7 @@ stats/result 字段。B 的 scaler/data 语义、C 的 Trainer 和联邦契约�
 
 ```text
 实际 Commit SHA：见本分支 S2-E 提交
-MR：待创建，目标 dev
+MR：已合入 `dev`（PR #25）
 Ruff：`ruff check src tests scripts`，All checks passed
 pytest：定向 22 passed；全量 262 passed
 配置/冒烟检查：`python -m src.cli validate-config` 通过；`git diff --check` 通过

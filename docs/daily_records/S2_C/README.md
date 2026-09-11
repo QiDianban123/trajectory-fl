@@ -73,7 +73,7 @@ split/model 不匹配及保存前后预测一致。
 
 实际 Commit SHA：`f3975a8`、`611649b`
 
-MR：待创建，目标 `dev`
+MR：已合入 `dev`（PR #23）
 
 Ruff：通过
 

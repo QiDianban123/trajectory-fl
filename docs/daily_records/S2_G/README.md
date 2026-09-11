@@ -2,6 +2,7 @@
 
 - 分支：`feature/s2-g-centralized-runner`
 - 目标分支：`dev`
+- 合并状态：已通过 PR #26 合入 `dev`；等待 S2-F/MS3 最终验收。
 - 范围：常速度 sanity baseline、集中式实验编排和可复现产物
 
 ## 公共接口

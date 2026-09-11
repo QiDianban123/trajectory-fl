@@ -85,6 +85,8 @@ GitHub Actions 的 Quality Gate 使用 Ubuntu / Python 3.10，并保存 JUnit �
 运行 `python -m pytest -q --junitxml=outputs/quality-gate.xml`。
 S1 的准出范围、自动化证据和人工审批状态见
 [MS2 S1 准出报告](docs/milestones/MS2_S1_exit_report.md)。
+S2 集中式训练的 AT-03 映射、缺陷状态和候选准出条件见
+[MS3 S2 准出报告](docs/milestones/MS3_S2_exit_report.md)。
 
 运行入口应在创建模型、数据划分或训练前调用 `set_global_seed(seed)`。每个 run 使用唯一 `run_id`，其配置、元数据、JSON 日志、指标、检查点和图表保存在 `outputs/<run_id>/`；已存在的 run ID 会被拒绝，避免覆盖结果。
 

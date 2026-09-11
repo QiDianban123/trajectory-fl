@@ -41,7 +41,7 @@ ProcessedDataBundle.inverse_transform(values)
 
 ```text
 实际 Commit SHA：d392c10（生产代码）、076e889（测试）
-MR：待创建
+MR：已合入 `dev`（PR #22）
 Ruff：python -m ruff check src tests scripts，All checks passed
 pytest：定向 24 passed；全量 234 passed
 配置/冒烟检查：validate-config 通过；prepare-data → processed reader 的 0/1 worker 集成通过
