@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
 from typing import Protocol
@@ -51,6 +51,14 @@ class PhysicalTrajectoryBatch:
 
 
 @dataclass(frozen=True)
+class PhysicalEvaluation:
+    """Physical arrays and canonical metrics produced by the shared evaluation path."""
+
+    trajectories: PhysicalTrajectoryBatch
+    metrics: Mapping[str, float]
+
+
+@dataclass(frozen=True)
 class CentralizedEvaluationRequest:
     """Saved centralized outputs and provenance required for physical evaluation."""
 
@@ -66,6 +74,7 @@ class CentralizedEvaluationRequest:
     output_dir: str | Path
     dataset: str = "highd"
     model: str = "lstm_encoder_decoder"
+    artifact_paths: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -110,6 +119,20 @@ def inverse_transform_batch(
     return PhysicalTrajectoryBatch(prediction=physical_prediction, truth=physical_truth)
 
 
+def evaluate_prediction_arrays(
+    prediction: np.ndarray,
+    truth: np.ndarray,
+    scaler: InverseTransformScaler,
+) -> PhysicalEvaluation:
+    """Evaluate normalized arrays through the single meter-coordinate metric path."""
+
+    trajectories = inverse_transform_batch(prediction, truth, scaler)
+    return PhysicalEvaluation(
+        trajectories=trajectories,
+        metrics=compute_metrics(trajectories.prediction, trajectories.truth),
+    )
+
+
 def evaluate_centralized(request: CentralizedEvaluationRequest) -> CentralizedEvaluationOutput:
     """Compute meter metrics and write plots plus same-source JSON/CSV artifacts.
 
@@ -121,8 +144,17 @@ def evaluate_centralized(request: CentralizedEvaluationRequest) -> CentralizedEv
         raise TypeError("request must be a CentralizedEvaluationRequest")
     if not isinstance(request.loss_history, LossHistory):
         raise TypeError("loss_history must be a LossHistory")
-    physical = inverse_transform_batch(request.prediction, request.truth, request.scaler)
-    metrics = compute_metrics(physical.prediction, physical.truth)
+    evaluation = evaluate_prediction_arrays(request.prediction, request.truth, request.scaler)
+    physical = evaluation.trajectories
+    metrics = evaluation.metrics
+
+    reserved_artifacts = {
+        "loss_curve": "figures/loss_curve.png",
+        "trajectory": "figures/prediction_trajectory.png",
+    }
+    overlap = set(request.artifact_paths) & set(reserved_artifacts)
+    if overlap:
+        raise ValueError(f"artifact_paths cannot override reserved artifacts: {sorted(overlap)}")
 
     record = ResultRecord(
         run_id=request.run_id,
@@ -134,10 +166,7 @@ def evaluate_centralized(request: CentralizedEvaluationRequest) -> CentralizedEv
         ade=metrics["ade"],
         fde=metrics["fde"],
         total_seconds=request.total_seconds,
-        artifact_paths={
-            "loss_curve": "figures/loss_curve.png",
-            "trajectory": "figures/prediction_trajectory.png",
-        },
+        artifact_paths={**dict(request.artifact_paths), **reserved_artifacts},
         dataset=request.dataset,
         model=request.model,
     )
