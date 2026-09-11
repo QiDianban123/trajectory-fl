@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -76,8 +77,11 @@ def main(argv: list[str] | None = None) -> int:
         else entry["train_loss"]
         for entry in history["epochs"]
     ]
-    if min(losses) >= losses[0]:
-        print("Centralized smoke loss did not decrease", file=sys.stderr)
+    if not all(isinstance(loss, (int, float)) and math.isfinite(loss) for loss in losses):
+        print("Centralized smoke loss is not finite", file=sys.stderr)
+        return 1
+    if min(losses) > losses[0] * 0.8:
+        print("Centralized smoke loss did not decrease by at least 20%", file=sys.stderr)
         return 1
     print(f"Centralized smoke loss: {losses[0]:.6f} -> {min(losses):.6f}")
     print(f"Centralized smoke passed: ADE={metrics['metrics']['ade']:.6f}m")
@@ -87,7 +91,8 @@ def main(argv: list[str] | None = None) -> int:
 def _write_smoke_model(root: Path, workspace: Path) -> Path:
     config = yaml.safe_load((root / "configs/model.yaml").read_text(encoding="utf-8"))
     config["model"]["hidden_size"] = 8
-    config["training"]["epochs"] = 8
+    config["training"]["learning_rate"] = 0.05
+    config["training"]["epochs"] = 30
     path = workspace / "model-smoke.yaml"
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     return path

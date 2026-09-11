@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import sys
 import uuid
+from copy import deepcopy
 from pathlib import Path
 
 from src.data.prepare import PrepareDataError, prepare_data
 from src.experiments.centralized import CentralizedExperiment, CentralizedExperimentRequest
-from src.utils.config import ConfigError, validate_config_bundle
+from src.utils.config import ConfigError, load_and_validate, validate_config_bundle
 
 DEFAULT_DATA_CONFIG = Path("configs/data.yaml")
 DEFAULT_MODEL_CONFIG = Path("configs/model.yaml")
@@ -41,8 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     train_parser = subparsers.add_parser("train", help="run one supported training mode")
     train_parser.add_argument("--mode", required=True)
-    train_parser.add_argument("--data", type=Path, default=DEFAULT_DATA_CONFIG)
-    train_parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_CONFIG)
+    train_parser.add_argument("--data", type=Path)
+    train_parser.add_argument("--model", type=Path)
     train_parser.add_argument("--experiment", type=Path, default=DEFAULT_EXPERIMENT_CONFIG)
     train_parser.add_argument("--processed-dir", type=Path)
     train_parser.add_argument("--output-root", type=Path)
@@ -100,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         try:
-            bundle = validate_config_bundle(args.data, args.model, args.experiment)
+            bundle = _load_train_bundle(args.data, args.model, args.experiment)
             dataset = bundle["data"]["dataset"]
             run = bundle["experiment"]["run"]
             processed_dir = (
@@ -108,9 +109,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             output_root = args.output_root if args.output_root is not None else run["output_root"]
             run_id = args.run_id or f"centralized-{uuid.uuid4().hex[:12]}"
+            effective_bundle = _effective_train_bundle(
+                bundle,
+                processed_dir=processed_dir,
+                output_root=output_root,
+                run_id=run_id,
+                resume_checkpoint=args.resume_checkpoint,
+            )
             result = CentralizedExperiment().run(
                 CentralizedExperimentRequest(
-                    config_bundle=bundle,
+                    config_bundle=effective_bundle,
                     processed_dir=processed_dir,
                     project_root=Path.cwd(),
                     run_id=run_id,
@@ -145,6 +153,40 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     raise ValueError(f"Unsupported command: {args.command}")
+
+
+def _load_train_bundle(
+    data_path: Path | None, model_path: Path | None, experiment_path: Path
+) -> dict[str, dict[str, object]]:
+    experiment = load_and_validate(experiment_path, "experiment")
+    references = experiment["configs"]
+    resolved_data = data_path if data_path is not None else Path(references["data"])
+    resolved_model = model_path if model_path is not None else Path(references["model"])
+    return validate_config_bundle(resolved_data, resolved_model, experiment_path)
+
+
+def _effective_train_bundle(
+    bundle: dict[str, dict[str, object]],
+    *,
+    processed_dir: object,
+    output_root: object,
+    run_id: str,
+    resume_checkpoint: Path | None,
+) -> dict[str, dict[str, object]]:
+    effective = deepcopy(bundle)
+    dataset = effective["data"]["dataset"]
+    run = effective["experiment"]["run"]
+    assert isinstance(dataset, dict)
+    assert isinstance(run, dict)
+    dataset["processed_dir"] = str(processed_dir)
+    run["mode"] = "centralized"
+    run["output_root"] = str(output_root)
+    effective["experiment"]["runtime"] = {
+        "run_id": run_id,
+        "processed_dir": str(processed_dir),
+        "resume_checkpoint": str(resume_checkpoint) if resume_checkpoint is not None else None,
+    }
+    return effective
 
 
 if __name__ == "__main__":

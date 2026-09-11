@@ -33,6 +33,7 @@ from src.experiments.run_context import RunContext
 from src.federated.training_adapter import clone_model_state
 from src.models.base import ModelContract, require_torch
 from src.models.constant_velocity import ConstantVelocityBaseline
+from src.models.initialization import initialize_model
 from src.models.lstm_seq2seq import LSTMSeq2Seq
 from src.training.centralized import CentralizedTrainingRequest, run_centralized
 from src.training.torch_trainer import TorchTrainer, TorchTrainerConfig
@@ -147,6 +148,8 @@ class CentralizedExperiment:
                 if not callable(loader):
                     raise TypeError("trainer must expose load_checkpoint for resume")
                 loader(model, request.resume_checkpoint)
+            else:
+                initialize_model(model, bundle["model"]["training"]["initialization"])
             fit_result = run_centralized(
                 trainer,
                 CentralizedTrainingRequest(
@@ -181,12 +184,24 @@ class CentralizedExperiment:
             )
 
             evaluation = trainer.evaluate(model, loaders["test"])
+            prediction_before_restore = collect_predictions(
+                model,
+                loaders["test"],
+                contract=contract,
+                device=getattr(trainer, "device", trainer_config.device),
+            )
+            checkpoint_loader = getattr(trainer, "load_checkpoint", None)
+            if not callable(checkpoint_loader):
+                raise TypeError("trainer must expose load_checkpoint for round-trip verification")
+            checkpoint_loader(model, checkpoint_path)
             prediction = collect_predictions(
                 model,
                 loaders["test"],
                 contract=contract,
                 device=getattr(trainer, "device", trainer_config.device),
             )
+            if not np.array_equal(prediction_before_restore.prediction, prediction.prediction):
+                raise RuntimeError("checkpoint predictions differ from pre-save predictions")
             sample_count = prediction.sample_count
             baseline = ConstantVelocityBaseline(contract)
             torch = require_torch()

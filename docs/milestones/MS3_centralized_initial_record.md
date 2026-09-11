@@ -8,3 +8,6 @@ ResultRecord 和 RunContext manifest 均由现有公共接口提供。
 
 最终 MS3 是否通过，必须以 S2-A 分支合入 `dev` 后的远端 Quality Gate、真实 smoke 证据和
 人工评审记录为准。
+
+当前分支复审已补充 Xavier 初始化、有效配置快照、checkpoint 预测一致性和真实 CLI 系统
+smoke；这些是候选准出证据，仍不得提前解释为 MS3 已通过。
