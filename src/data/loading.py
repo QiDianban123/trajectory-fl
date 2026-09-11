@@ -20,7 +20,6 @@ from src.data.cache import processed_cache_key, semantic_config_digest
 from src.data.dataset import TrajectoryDataset, load_dataset
 from src.data.preprocess import TrainingCoordinateScaler
 from src.models.base import ModelContract, require_torch
-from src.training.batching import collate_trajectory_samples
 
 _SPLITS: tuple[SplitName, ...] = ("train", "validation", "test")
 _ARTIFACT_NAMES = ("manifest.json", "samples.npz", "scaler.npz")
@@ -175,6 +174,9 @@ def create_dataloaders(
     config: DataLoaderConfig,
 ) -> Mapping[SplitName, Any]:
     """Create reproducible train and ordered holdout loaders for one data identity."""
+
+    # Import lazily so ``src.training`` and ``src.data`` remain independently importable.
+    from src.training.batching import collate_trajectory_samples
 
     torch = require_torch()
     loaders: dict[SplitName, Any] = {}

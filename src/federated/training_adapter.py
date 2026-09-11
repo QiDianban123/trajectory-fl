@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+import random
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from struct import pack
 from typing import Any
+
+import numpy as np
 
 from src.federated.client import ClientTrainRequest
 from src.federated.contracts import (
@@ -130,14 +134,24 @@ class LocalTrainerAdapter:
         model: TrajectoryPredictor,
         train_batches: Iterable[TrajectoryBatch],
         validation_batches: Iterable[TrajectoryBatch] | None = None,
+        *,
+        seed: int | None = None,
     ) -> None:
         if not isinstance(client_id, str) or not client_id.strip():
             raise FederatedContractError("client_id must be a non-empty string")
         self.client_id = client_id
         self._trainer = trainer
         self._model = model
-        self._train_batches = train_batches
-        self._validation_batches = validation_batches
+        self._train_batches = _require_reiterable(train_batches, "train_batches")
+        self._validation_batches = (
+            _require_reiterable(validation_batches, "validation_batches")
+            if validation_batches is not None
+            else None
+        )
+        inferred_seed = getattr(getattr(trainer, "config", None), "seed", 0)
+        self._seed = inferred_seed if seed is None else seed
+        if isinstance(self._seed, bool) or not isinstance(self._seed, int) or self._seed < 0:
+            raise FederatedContractError("seed must be a non-negative integer")
 
     def local_train(self, request: ClientTrainRequest) -> ClientUpdate:
         """Train from an isolated verified baseline and return one client update."""
@@ -149,12 +163,13 @@ class LocalTrainerAdapter:
                 "global_state_id does not match the dispatched global_state contents"
             )
         initial_state = clone_model_state(reference_state)
-        result = self._trainer.fit(
-            self._model,
-            self._train_batches,
-            self._validation_batches,
-            initial_state=initial_state,
-        )
+        with _isolated_random_state(self._seed):
+            result = self._trainer.fit(
+                self._model,
+                self._train_batches,
+                self._validation_batches,
+                initial_state=initial_state,
+            )
         # Re-hash the caller-owned state to make baseline mutation observable immediately.
         if model_state_id(request.global_state) != request.global_state_id:
             raise ModelStateError("dispatched global_state was mutated during local training")
@@ -170,3 +185,34 @@ class LocalTrainerAdapter:
 def _hash_field(digest: Any, value: bytes) -> None:
     digest.update(pack(">Q", len(value)))
     digest.update(value)
+
+
+def _require_reiterable(
+    batches: Iterable[TrajectoryBatch], name: str
+) -> Iterable[TrajectoryBatch]:
+    try:
+        iterator = iter(batches)
+    except TypeError as exc:
+        raise TypeError(f"{name} must be an iterable of TrajectoryBatch values") from exc
+    if isinstance(batches, Iterator) or iterator is batches:
+        raise TypeError(f"{name} must be re-iterable; one-shot iterators are not supported")
+    return batches
+
+
+@contextmanager
+def _isolated_random_state(seed: int) -> Any:
+    """Make one local fit deterministic without changing caller RNG streams."""
+
+    torch = require_torch()
+    python_state = random.getstate()
+    numpy_state = np.random.get_state()
+    cuda_devices = list(range(torch.cuda.device_count())) if torch.cuda.is_available() else []
+    try:
+        with torch.random.fork_rng(devices=cuda_devices):
+            random.seed(seed)
+            np.random.seed(seed % (2**32))
+            torch.manual_seed(seed)
+            yield
+    finally:
+        random.setstate(python_state)
+        np.random.set_state(numpy_state)

@@ -228,6 +228,18 @@ def test_local_adapter_rejects_state_id_mismatch_before_training() -> None:
     assert trainer.received_initial_state is None
 
 
+def test_local_adapter_rejects_one_shot_batches_and_invalid_seed() -> None:
+    model = _model()
+    trainer = MutatingTrainer(model.state_dict())
+
+    with pytest.raises(TypeError, match="train_batches must be re-iterable"):
+        LocalTrainerAdapter("rsu_01", trainer, model, iter(()))
+    with pytest.raises(TypeError, match="validation_batches must be re-iterable"):
+        LocalTrainerAdapter("rsu_01", trainer, model, (), iter(()))
+    with pytest.raises(FederatedContractError, match="seed must be a non-negative integer"):
+        LocalTrainerAdapter("rsu_01", trainer, model, (), seed=-1)
+
+
 def test_client_execution_order_does_not_change_updates_or_global_baseline() -> None:
     model_a = _model()
     model_b = _model()
