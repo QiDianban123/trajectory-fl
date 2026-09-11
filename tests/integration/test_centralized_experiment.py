@@ -223,6 +223,7 @@ def test_fake_trainer_workflow_order_and_complete_artifacts(tmp_path: Path) -> N
         "metrics.json",
         "metrics.csv",
         "predictions.npz",
+        "training_history.json",
         "manifest.json",
         "checkpoints/best.pt",
         "baseline/metrics.json",

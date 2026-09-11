@@ -18,6 +18,24 @@ def test_validate_missing_config_returns_error(capsys: object) -> None:
     assert "Configuration error" in capsys.readouterr().err  # type: ignore[attr-defined]
 
 
-def test_unimplemented_command_is_not_silent_success(capsys: object) -> None:
-    assert main(["train"]) == 2
-    assert "not implemented yet" in capsys.readouterr().err  # type: ignore[attr-defined]
+def test_train_rejects_unknown_mode(capsys: object) -> None:
+    assert main(["train", "--mode", "federated"]) == 2
+    assert "unsupported mode" in capsys.readouterr().err  # type: ignore[attr-defined]
+
+
+def test_train_reports_missing_processed_data(capsys: object) -> None:
+    assert (
+        main(
+            [
+                "train",
+                "--mode",
+                "centralized",
+                "--processed-dir",
+                "missing-processed",
+                "--run-id",
+                "missing-data-run",
+            ]
+        )
+        == 2
+    )
+    assert "Train error" in capsys.readouterr().err  # type: ignore[attr-defined]
