@@ -64,6 +64,17 @@ def test_result_record_rejects_non_meter_or_invalid_mode() -> None:
         **{**_record().__dict__, "status": "failed", "error": "upload failed"}
     )
     assert failed.to_dict()["error"] == "upload failed"
+    failed_without_samples = ResultRecord(
+        **{
+            **_record().__dict__,
+            "status": "failed",
+            "error": "training failed before data was evaluated",
+            "sample_count": 0,
+            "ade": 0.0,
+            "fde": 0.0,
+        }
+    )
+    assert failed_without_samples.to_dict()["sample_count"] == 0
 
 
 def test_visualizations_create_parent_directories_and_files(tmp_path: Path) -> None:
