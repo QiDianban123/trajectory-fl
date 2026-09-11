@@ -248,6 +248,14 @@ def test_fake_trainer_workflow_order_and_complete_artifacts(tmp_path: Path) -> N
         if path.is_file()
     }
     assert required <= actual
+    with np.load(output.output_dir / "predictions.npz") as predictions:
+        assert predictions["lstm_prediction"].shape == predictions["truth"].shape
+        assert predictions["baseline_prediction"].shape == predictions["truth"].shape
+    log_entries = [
+        json.loads(line)
+        for line in (output.output_dir / "train.log").read_text(encoding="utf-8").splitlines()
+    ]
+    assert log_entries and all(entry["run_id"] == "fake-run" for entry in log_entries)
     manifest = json.loads(output.manifest_path.read_text(encoding="utf-8"))
     assert set(manifest["artifacts"]) >= {
         "config",
@@ -283,7 +291,16 @@ def test_failed_training_keeps_failure_record_and_manifest(tmp_path: Path) -> No
     record = json.loads((output_dir / "metrics.json").read_text(encoding="utf-8"))
     assert record["status"] == "failed"
     assert "fake training failure" in record["error"]
-    assert (output_dir / "manifest.json").is_file()
+    metadata = json.loads((output_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["status"] == "failed"
+    log_entries = [
+        json.loads(line)
+        for line in (output_dir / "train.log").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(entry["level"] == "ERROR" for entry in log_entries)
+    manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+    for relative_path in manifest["artifacts"].values():
+        assert (output_dir / relative_path).is_file()
 
 
 def test_real_small_centralized_smoke_uses_lstm_and_baseline(tmp_path: Path) -> None:
