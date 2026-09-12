@@ -27,6 +27,15 @@ def test_default_bundle_is_valid() -> None:
     assert bundle["experiment"]["run"]["mode"] == "smoke"
 
 
+def test_gradient_clip_norm_must_be_positive_and_finite() -> None:
+    base = load_yaml(PROJECT_ROOT / "configs/model.yaml")
+    for invalid in (0, -1.0, float("inf"), float("nan")):
+        config = dict(base)
+        config["training"] = dict(base["training"], gradient_clip_norm=invalid)
+        with pytest.raises(ConfigError, match="training.gradient_clip_norm"):
+            validate_config(config, "model")
+
+
 def test_empty_yaml_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "empty.yaml"
     path.write_text("", encoding="utf-8")

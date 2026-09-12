@@ -114,6 +114,7 @@ def prepare_data(
             scaler=cleaned["scaler"],  # type: ignore[arg-type]
             stats=cleaned["stats"],  # type: ignore[arg-type]
             data_version=str(cleaned["data_version"]),
+            data_config=dict(data_config),
         )
         partition_manifest_path = destination / "partition_manifest.json"
         _write_json(partition_manifest_path, partition.to_mapping())

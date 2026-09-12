@@ -94,6 +94,48 @@ P0 预测模型的 `ModelContract` 固定为：输入 `history: torch.float32 [B
 该增量不修改数据层、ModelContract、配置或 Trainer 的 fit/evaluate 签名。
 用法与验证证据见 [S1-C 交付记录](daily_records/S1_C/README.md)；公共接口增量尚待 E/A 评审及 B 对接确认。
 
+#### S2-B 实现补充：processed reader 与确定性 DataLoader（待团队评审）
+
+- `src.data.ProcessedDatasetReader` 一次读取并交叉校验 train/validation/test，拒绝空
+  split、旧 cache identity、版本/配置不符、损坏文件和不一致 manifest/scaler。
+- processed cache key 由 `data_version`、`split_id` 和数据语义配置摘要生成；路径与
+  DataLoader 性能参数不属于数据语义。关键 processed 文件另有 SHA-256 完整性校验。
+- `DataLoaderConfig.from_config_bundle` 读取现有 `training.batch_size`、
+  `execution.num_workers` 和 `run.seed`，没有新增或覆盖配置字段。
+- `create_dataloaders` 复用 S1-C collate；train shuffle 由 seed 确定，holdout 保序且
+  保留尾批。DataLoader 与 device 迁移仍由训练调用方持有。
+- `ProcessedDataBundle.inverse_transform` 只委托保存的 train scaler，不计算评价指标。
+
+该增量不修改模型、Trainer、评价算法或训练循环。正式证据见
+[S2-B 交付记录](daily_records/S2_B/README.md)。
+
+#### S2-C 实现补充：LSTM Seq2Seq 与 TorchTrainer（待团队评审）
+
+- `LSTMSeq2Seq.from_model_config(model_section)` 实现冻结的绝对位置预测契约；模型只拥有
+  网络参数和 forward，不读取文件、不创建优化器或计算物理指标。
+- `TorchTrainerConfig.from_config(model_config, seed, split_id, device)` 将训练配置与运行级
+  seed/split 绑定；`gradient_clip_norm` 是必需的正有限配置项。
+- `TorchTrainer` 是 Centralized、Local-only 和 Federated 共用的 MSE/Adam 训练实现，负责
+  device、train/eval、no_grad、反向传播、梯度裁剪和 best epoch。
+- fit 从调用者提供的 state 深拷贝开始，返回的 checkpoint state 固定转移到 CPU；恢复时
+  严格校验 split、模型配置、state key/shape/dtype 和有限值。
+- `evaluate` 只返回归一化空间的 loss 和 sample count；inverse-transform、ADE/FDE 和图表
+  继续由评价层负责。
+
+用法与验证证据见 [S2-C 交付记录](daily_records/S2_C/README.md)。
+
+#### S2-E 实现补充：集中式物理评价与可重建产物（待团队评审）
+
+- `inverse_transform_batch(prediction, truth, scaler)` 严格接收匹配的浮点
+  `[B,T_f,2]` 数组，并分别调用 train-fitted scaler 的批量 `inverse_transform`；只有返回
+  shape 不变且有限的物理数组后，评价 adapter 才调用共享 `compute_metrics`。
+- `evaluate_centralized(request)` 只消费已保存的预测、真值、scaler、loss 日志和运行元数据，
+  不接收模型或 Trainer，也不会触发训练。`sample_count` 固定由预测批维推导。
+- JSON 和 CSV 由同一个 `ResultRecord` 写出；loss 曲线与首个样本的米制预测轨迹使用相对
+  artifact 路径，可从相同预测与 loss 日志重新生成。
+
+正式接口与验证证据见 [S2-E 交付记录](daily_records/S2_E/README.md)。
+
 ### 3.6 联邦接口契约（D2-D 确认）
 
 Client 接收带 round 与 `global_state_id` 的不可变下发请求，未来只通过共享 Trainer 完成本地训练，并返回一个 `ClientUpdate` 或显式 `ClientFailure`。Server 负责唯一客户端选择、可用性检查和“一名选中客户端对应一个结果”的完整性；失败不得静默跳过。
