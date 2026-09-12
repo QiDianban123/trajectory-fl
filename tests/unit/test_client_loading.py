@@ -15,7 +15,7 @@ from src.data.adapters import TrajectorySample
 from src.data.client_loading import ClientDataError, create_client_dataloaders
 from src.data.dataset import TrajectoryDataset, save_split_datasets
 from src.data.loading import DataLoaderConfig, ProcessedDataBundle, ProcessedDatasetReader
-from src.data.partition import ClientPartition, PartitionManifest
+from src.data.partition import ClientPartition, PartitionManifest, client_group_id
 from src.data.preprocess import TrainingCoordinateScaler, WindowSpec
 from src.models.base import ModelContract
 
@@ -34,7 +34,11 @@ def _five_client_partition() -> PartitionManifest:
 
 
 def _group_id(vehicle_id: int) -> str:
-    return json.dumps([1, vehicle_id], separators=(",", ":"))
+    return client_group_id(1, vehicle_id)
+
+
+def test_client_group_id_normalizes_numeric_and_string_recordings() -> None:
+    assert client_group_id(1, 2) == client_group_id("1", "2") == '["1",2]'
 
 
 @pytest.fixture

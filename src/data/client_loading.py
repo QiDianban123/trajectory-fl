@@ -17,7 +17,7 @@ import numpy as np
 from src.data.adapters import SplitName, TrajectorySample
 from src.data.dataset import TrajectoryDataset
 from src.data.loading import DataLoaderConfig, ProcessedDataBundle
-from src.data.partition import PartitionManifest
+from src.data.partition import PartitionManifest, client_group_id
 from src.models.base import ModelContract, require_torch
 
 
@@ -282,9 +282,7 @@ def _validate_train_assignments(train: TrajectoryDataset, partition: PartitionMa
 
 
 def _group_id(sample: TrajectorySample) -> str:
-    return json.dumps(
-        [sample.meta["recording_id"], sample.meta["vehicle_id"]], separators=(",", ":")
-    )
+    return client_group_id(sample.meta["recording_id"], sample.meta["vehicle_id"])  # type: ignore[arg-type]
 
 
 def _dataset_like(
