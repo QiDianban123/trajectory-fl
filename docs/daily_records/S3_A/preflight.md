@@ -22,8 +22,8 @@
   `3df96b5` 被 `origin/dev` 包含。
 - `docs/milestones/MS3_S2_exit_report.md` 明确仍待远端最新 Quality Gate 与真人评审；
   `docs/daily_records/S2_UI/README.md` 明确人工评审待 MR 记录且既有证据仅 HTTP 200。
-  本机未安装 `gh`，浏览器/网页查询未返回可核验的远端状态，故没有把本地合并记录当作
-  Quality Gate 或真人批准通过。
+  本机未安装 `gh`；2026-09-12 对 GitHub REST API 的查询返回匿名请求 rate-limit exceeded，
+  故没有把本地合并记录当作 Quality Gate 或真人批准通过。
 
 ## 发现与最小修复
 
@@ -46,28 +46,34 @@ artifact，不改变 CLI、配置或冻结的生产接口。系统 smoke 回归�
 | `.venv\\Scripts\\python.exe -m src.cli validate-config` | 0；配置有效（run `d2-smoke`） |
 | `git diff --check`（候选前） | 0；仅对保留的 S1 文件报告 CRLF 警告，未暂存 |
 
-## Centralized 页面 smoke
+## Centralized 页面 smoke（已补齐）
 
 - 在 `http://localhost:8503` 打开真实 Streamlit 页；页面显示 S2 Centralized 控制台、允许
   Centralized、Local-only/Federated/compare 禁用，以及“页面不会自动启动训练”。
 - 通过实际“执行受控操作”按钮启动 `outputs/ui-smoke-1789207190`；随后只读核对该 run 已有
   manifest、metrics JSON/CSV、`train.log`、best checkpoint、prediction/loss/baseline 图、
   processed split 与 RSU 产物。
-- 浏览器自动化通道在点击后的状态读取被安全审查中断。因此无法见证页面的完成日志/结果卡片，
-  也无法刷新页面验证不会重复训练；这些不能以 HTTP 200 或磁盘产物替代。
+- 在 `http://localhost:8504` 复验实际页面，点击“执行受控操作”后页面显示“操作完成，退出码 0”，
+  受控日志显示 5 个 RSU、split、best epoch `29`、ADE `21.686918m`、FDE `24.571101m`、
+  checkpoint、metrics 与 figures 路径和 loss `0.520146 -> 0.001460`。运行目录为
+  `outputs/ui-smoke-1789208821`，其 manifest、metrics JSON/CSV、训练日志、checkpoint、图表
+  和 processed artifact 均存在。
+- 刷新同一页面后，受控命令台回到“尚未执行页面操作。页面不会自动启动训练”，且 outputs 下的
+  `ui-smoke-*` 目录仍仅为先前两次显式点击产生的 `ui-smoke-1789207190` 与
+  `ui-smoke-1789208821`；本次刷新没有生成第三次训练运行。
 
 ## 评审与批准
 
 - AI 自评：Codex（GPT-5）审阅候选 `7769d3a`。确认 `Agg` 在 `pyplot` 前设置，且回归测试
   显式移除继承环境变量；未发现新增 P0/P1。此为自评，**不替代** 02 要求的独立 AI R1/R2。
 - 真人批准：无；未创建 MR、未推送，故无平台链接或批准记录。
-- 远端 CI：未核实（本机无 `gh`；外部查询无可审计响应）。
+- 远端 CI：未核实（本机无 `gh`；GitHub REST API 匿名请求已限流）。
 
 ## 缺陷、下游接口与继续条件
 
 - 已修复：无头环境的 Centralized 图表渲染。接口冻结影响：无；下游仍调用原有
   visualization 函数，CLI/JSON schema/配置签名不变。
 - 阻塞：需在托管平台核实 PR #28/#29 及最新 `dev` 的 Quality Gate 和真实非作者批准；
-  需要完成浏览器层的页面日志/结果展示与刷新不重训证据；本修复需独立 AI 评审、真人批准和
-  `chore/s3-preflight` → `dev` MR，之后才能进入 S3-A0 接口冻结。
+  本修复仍需独立 AI 评审、真人批准和 `chore/s3-preflight` → `dev` MR，之后才能进入
+  S3-A0 接口冻结。
 - 不关闭既有保护规则；没有推送 `dev`/`main`，没有自动合并。
