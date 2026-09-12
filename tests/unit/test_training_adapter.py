@@ -16,6 +16,7 @@ from src.federated.training_adapter import (
     LocalTrainerAdapter,
     clone_model_state,
     fit_result_to_client_update,
+    fit_result_to_last_epoch_client_update,
     model_state_id,
     snapshot_model_state,
 )
@@ -31,21 +32,23 @@ def _model() -> LSTMSeq2Seq:
 
 
 def _fit_result(state: Mapping[str, Any], sample_count: int = 4) -> FitResult:
+    payload = {
+        "schema_version": 1,
+        "model_state": state,
+        "model_config": {"name": "lstm_encoder_decoder"},
+        "seed": 42,
+        "epoch": 1,
+        "split_id": "highd-split-42",
+        "metrics": {"loss": 0.75},
+    }
     return FitResult(
         epoch_stats=(
             EpochStats(epoch=0, sample_count=sample_count, train_loss=1.0, validation_loss=1.5),
             EpochStats(epoch=1, sample_count=sample_count, train_loss=0.5, validation_loss=0.75),
         ),
         best_epoch=1,
-        checkpoint_payload={
-            "schema_version": 1,
-            "model_state": state,
-            "model_config": {"name": "lstm_encoder_decoder"},
-            "seed": 42,
-            "epoch": 1,
-            "split_id": "highd-split-42",
-            "metrics": {"loss": 0.75},
-        },
+        checkpoint_payload=payload,
+        last_checkpoint_payload=payload,
     )
 
 
@@ -160,6 +163,32 @@ def test_fit_result_maps_shared_fields_and_is_aggregation_compatible() -> None:
     assert request.total_sample_count == 4
     first_key = next(iter(trained))
     assert update.state[first_key].data_ptr() != trained[first_key].data_ptr()
+
+
+def test_last_epoch_adapter_keeps_best_adapter_compatible() -> None:
+    baseline = _model().state_dict()
+    best = clone_model_state(baseline)
+    last = clone_model_state(baseline)
+    next(iter(best.values())).add_(1.0)
+    next(iter(last.values())).add_(2.0)
+    result = _fit_result(best)
+    last_payload = dict(result.checkpoint_payload)
+    last_payload["model_state"] = last
+    result = FitResult(
+        epoch_stats=result.epoch_stats,
+        best_epoch=result.best_epoch,
+        checkpoint_payload=result.checkpoint_payload,
+        last_checkpoint_payload=last_payload,
+    )
+    old = fit_result_to_client_update(
+        result, client_id="rsu_01", round_index=0, global_state_id="state", reference_state=baseline
+    )
+    current = fit_result_to_last_epoch_client_update(
+        result, client_id="rsu_01", round_index=0, global_state_id="state", reference_state=baseline
+    )
+    key = next(iter(baseline))
+    assert torch.equal(old.state[key], best[key])
+    assert torch.equal(current.state[key], last[key])
 
 
 def test_fit_result_rejects_state_shape_dtype_and_unstable_sample_count() -> None:

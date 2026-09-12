@@ -157,6 +157,7 @@ class TorchTrainer:
         best_epoch = -1
         best_score = float("inf")
         best_state: dict[str, Any] | None = None
+        last_state: dict[str, Any] | None = None
 
         for epoch in range(self.config.epochs):
             module.train()
@@ -206,8 +207,9 @@ class TorchTrainer:
                 best_score = selection_loss
                 best_epoch = epoch
                 best_state = _clone_state_dict(module.state_dict())
+            last_state = _clone_state_dict(module.state_dict())
 
-        if best_state is None:  # Defensive; the non-empty epoch loop always selects once.
+        if best_state is None or last_state is None:  # Defensive; the non-empty loop selects once.
             raise RuntimeError("training did not produce a checkpoint state")
         module.load_state_dict(best_state, strict=True)
         module.eval()
@@ -225,10 +227,28 @@ class TorchTrainer:
             "metrics": metrics,
         }
         validate_checkpoint_payload(payload)
+        last_stat = statistics[-1]
+        last_payload: dict[str, object] = {
+            "schema_version": 1,
+            "model_state": last_state,
+            "model_config": self._model_config(module),
+            "seed": self.config.seed,
+            "epoch": last_stat.epoch,
+            "split_id": self.config.split_id,
+            "metrics": {"train_loss": last_stat.train_loss, "loss": last_stat.train_loss},
+        }
+        if last_stat.validation_loss is not None:
+            last_payload["metrics"] = {
+                "train_loss": last_stat.train_loss,
+                "validation_loss": last_stat.validation_loss,
+                "loss": last_stat.validation_loss,
+            }
+        validate_checkpoint_payload(last_payload)
         return FitResult(
             epoch_stats=tuple(statistics),
             best_epoch=best_epoch,
             checkpoint_payload=payload,
+            last_checkpoint_payload=last_payload,
         )
 
     def evaluate(
