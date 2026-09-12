@@ -102,7 +102,8 @@ w[r+1,k] = Σ(i∈successful_updates) (n_i / Σj n_j) × w[r+1,i,k]
 `global_state_id == model_state_id(global_state)`；聚合输出必须计算
 `output_global_state_id = model_state_id(output_state)`。D2 `AggregationRequest` 与
 `AggregationResult` 构造签名和 `global_state_id` 语义均不变；D 的 S3 wrapper 在调用前后完成
-内容 hash 校验，并将 input/output ID 写入新的 `RoundRecord`，不向旧类型添加必填字段。key/shape/dtype/finite、round、
+内容 hash 校验，并断言 `AggregationResult.global_state_id == model_state_id(result.state)`；它是聚合
+输出 state 的既有 ID。wrapper 将 input/output ID 写入新的 `RoundRecord`，不向旧类型添加必填字段。key/shape/dtype/finite、round、
 client 唯一性仍复用现有 `validate_client_update`/`AggregationRequest` 并增加前述内容 hash 校验。
 非浮点 tensor 一律 `preserve_global`，即复制输入 global state，不能平均
 客户端 buffer。任何重复/过期/NaN/Inf/空权重、未选 client 上传、选择 client 缺显式结果均拒绝；
@@ -120,7 +121,7 @@ ClientResultRecord(
   ade, fde, total_seconds, initial_state_id, final_state_id, client_profile, artifact_paths
 )
 RoundRecord(
-  round_index, selected_client_ids, successful_client_ids, failures,
+  round_index, status, error_code, error_message, selected_client_ids, successful_client_ids, failures,
   total_train_sample_count, aggregation_weights, input_global_state_id,
   output_global_state_id, sample_visits, metrics, total_seconds
 )
@@ -155,6 +156,10 @@ rounds:int, selected_clients:list[str]}`；`clients` 按 client_id 字典序、`
 升序，`failures` 按 `(client_id, stage)` 排序，`aggregation_weights` 是 client_id → 正有限 float
 且和为 1。`artifacts` 是 string → safe relative path。`summary` 可为 null：v1 reader 遇 v2 null
 summary 必须保留 run status/error/records 但不得比较；v2 reader 遇 v1 只生成 historical summary。
+若成功更新非空，RoundRecord 为 `completed`、`aggregation_weights` 每值正且和为 1、
+`total_train_sample_count>0`、output ID 为 hash 后 state；若全失败，RoundRecord 为 `failed`、
+`error_code="NoSuccessfulUpdates"`、`aggregation_weights={}`、`total_train_sample_count=0`、
+`output_global_state_id=null`、`output_global_state=None`，不得调用 AggregationRequest/聚合。
 E 从这些结构化记录生成 Client/macro/weighted summary、round 曲线和 comparison figure；JSON 为
 事实源，CSV/图表只从同一对象导出。
 
@@ -197,11 +202,13 @@ python scripts/run_three_mode_smoke.py
 ```
 
 所有 CLI path 必须经 `resolve_within(project_root, ...)`：data/model/experiment 在 `configs/`，
-processed 仅允许 `data/processed/**` 或 `outputs/<safe-workspace>/processed/**`；输出仅允许
-`outputs/<safe-run-id>/`；resume 仅允许目标 run 自身的 `outputs/<safe-run-id>/checkpoints/**`，且
-Centralized checkpoint 只能 resume Centralized、S3 resume manifest 只能 resume 同 mode/identity。
-`run_id` 复用 `validate_run_id`；已有 output、重复/并发 run ID、跨模式 resume、resume identity 不符均
-exit 2。`three_mode_smoke.yaml` 必须含 `mode_matrix`（三模式）、`rounds`、`local_epochs`、
+processed 仅允许 `data/processed/**` 或 `outputs/<safe-workspace>/processed/**`；`--output-root` 固定
+为 `outputs`，实际 run 目录固定为 `outputs/<safe-run-id>/`；resume checkpoint 仅允许目标 run 自身
+`outputs/<safe-run-id>/checkpoints/**`。无 `--resume-checkpoint` 时 run 目录必须不存在；有 resume 时
+run 目录必须存在且 manifest status 为 `failed` 或 `interrupted`，只允许从 §5 原子边界追加记录，
+completed run 仍拒绝。Centralized checkpoint 只能 resume Centralized、S3 resume manifest 只能 resume
+同 mode/identity；重复/并发 run ID、跨模式 resume、resume identity 不符均 exit 2。
+`three_mode_smoke.yaml` 必须含 `mode_matrix`（三模式）、`rounds`、`local_epochs`、
 `clients_per_round`、公平性 identity 和恢复策略；A 的 `validate-config` 必须先校验 schema 与
 identity，再创建模型/loader/输出目录。`run_three_mode_smoke.py` 不接收参数：生成匿名小样例、
 校验三份配置、调用上述生产 runner、核验 manifest/ResultRecord/图表/预算；失败非零。UI 仅用
