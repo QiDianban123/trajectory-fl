@@ -25,10 +25,16 @@ def _five_client_partition() -> PartitionManifest:
     return PartitionManifest(
         region_edges=edges,
         clients=tuple(
-            ClientPartition(f"rsu_{index:02d}", edges[index - 1], edges[index], 1, (index - 1,))
+            ClientPartition(
+                f"rsu_{index:02d}", edges[index - 1], edges[index], 1, (_group_id(index - 1),)
+            )
             for index in range(1, 6)
         ),
     )
+
+
+def _group_id(vehicle_id: int) -> str:
+    return json.dumps([1, vehicle_id], separators=(",", ":"))
 
 
 @pytest.fixture
@@ -139,7 +145,7 @@ def test_empty_train_client_is_retained_without_padding_or_training_loader_shuff
     partition = PartitionManifest(
         region_edges=(10.0, 15.0, 21.0),
         clients=(
-            ClientPartition("rsu_01", 10.0, 15.0, 5, (0, 1, 2, 3, 4)),
+            ClientPartition("rsu_01", 10.0, 15.0, 5, tuple(_group_id(index) for index in range(5))),
             ClientPartition("rsu_02", 15.0, 21.0, 0, ("reserved",)),
         ),
     )
@@ -183,8 +189,31 @@ def test_client_loaders_reject_drop_last_and_duplicate_train_samples(processed_c
     duplicate_data = replace(
         data, datasets=MappingProxyType({**data.datasets, "train": duplicate_train})
     )
-    with pytest.raises(ClientDataError, match="sample counts do not match"):
+    with pytest.raises(ClientDataError, match="duplicate window identity"):
         _loaders(duplicate_data, _five_client_partition())
+    swapped = TrajectoryDataset(
+        [
+            TrajectorySample(
+                history=sample.history.copy(),
+                future=sample.future.copy(),
+                meta={
+                    **sample.meta,
+                    "client_id": (
+                        "rsu_02"
+                        if sample.meta["client_id"] == "rsu_01"
+                        else sample.meta["client_id"]
+                    ),
+                },
+            )
+            for sample in data.datasets["train"]
+        ],
+        split="train",
+        split_id=data.split_id,
+        window_spec=data.datasets["train"].window_spec,
+    )
+    swapped_data = replace(data, datasets=MappingProxyType({**data.datasets, "train": swapped}))
+    with pytest.raises(ClientDataError, match="does not match frozen group assignment"):
+        _loaders(swapped_data, _five_client_partition())
 
 
 def test_extreme_noniid_profile_and_export_are_rebuildable(processed_cache, tmp_path: Path) -> None:
@@ -205,7 +234,11 @@ def test_extreme_noniid_profile_and_export_are_rebuildable(processed_cache, tmp_
     altered = replace(data, datasets=MappingProxyType({**data.datasets, "train": train}))
     partition = PartitionManifest(
         region_edges=(10.0, 21.0),
-        clients=(ClientPartition("rsu_01", 10.0, 21.0, 5, (0, 1, 2, 3, 4)),),
+        clients=(
+            ClientPartition(
+                "rsu_01", 10.0, 21.0, 5, tuple(_group_id(index) for index in range(5))
+            ),
+        ),
     )
     bundle = _loaders(altered, partition)
     profile = bundle.clients["rsu_01"].profile
@@ -213,7 +246,17 @@ def test_extreme_noniid_profile_and_export_are_rebuildable(processed_cache, tmp_
     assert profile.validation_sample_count == 3
     assert profile.test_sample_count == 2
     assert profile.sample_visits(3) == 15
+    train_batch_sizes = [
+        batch.history.shape[0] for batch in bundle.clients["rsu_01"].loaders["train"]
+    ]
+    assert train_batch_sizes == [2, 2, 1]
     output = bundle.write_profiles(tmp_path / "client_profiles.json")
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["partition_id"] == bundle.partition_id
     assert payload["clients"] == [profile.to_dict()]
+    split_manifest = bundle.write_client_split_manifest(tmp_path / "client_split_manifest.json")
+    split_payload = json.loads(split_manifest.read_text(encoding="utf-8"))
+    assert split_payload["assignment_anchor"] == "history_last_x_meter"
+    assert split_payload["scaler_id"] == bundle.scaler_id
+    assert split_payload["out_of_range"] == 0
+    assert split_payload["trainable_client_ids"] == ["rsu_01"]

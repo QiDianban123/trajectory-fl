@@ -33,6 +33,7 @@ class ClientDataProfile:
     x_min: float
     x_max: float
     vehicle_count: int
+    group_ids: tuple[str, ...]
     train_sample_count: int
     validation_sample_count: int
     test_sample_count: int
@@ -50,6 +51,7 @@ class ClientDataProfile:
             "x_min": self.x_min,
             "x_max": self.x_max,
             "vehicle_count": self.vehicle_count,
+            "group_ids": list(self.group_ids),
             "train_sample_count": self.train_sample_count,
             "validation_sample_count": self.validation_sample_count,
             "test_sample_count": self.test_sample_count,
@@ -79,10 +81,20 @@ class ClientDataBundle:
     data_version: str
     split_id: str
     partition_id: str
+    scaler_id: str
+    holdout_intervals: tuple[tuple[str, float, float], ...]
     clients: Mapping[str, ClientDataLoaders]
 
     def profiles(self) -> tuple[ClientDataProfile, ...]:
         return tuple(self.clients[client_id].profile for client_id in sorted(self.clients))
+
+    @property
+    def trainable_client_ids(self) -> tuple[str, ...]:
+        return tuple(
+            client_id
+            for client_id in sorted(self.clients)
+            if not self.clients[client_id].is_empty_train
+        )
 
     def write_profiles(self, path: str | Path) -> Path:
         """Export stable RSU/sample/coordinate diagnostics without raw trajectories."""
@@ -99,6 +111,37 @@ class ClientDataBundle:
         destination.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
+        return destination
+
+    def write_client_split_manifest(self, path: str | Path) -> Path:
+        """Atomically write the S3-B frozen client split manifest."""
+
+        destination = Path(path)
+        payload = {
+            "schema_version": 1,
+            "data_version": self.data_version,
+            "split_id": self.split_id,
+            "partition_id": self.partition_id,
+            "scaler_id": self.scaler_id,
+            "assignment_anchor": "history_last_x_meter",
+            "holdout_intervals": [
+                {"client_id": client_id, "x_min": low, "x_max": high}
+                for client_id, low, high in self.holdout_intervals
+            ],
+            "out_of_range": 0,
+            "trainable_client_ids": list(self.trainable_client_ids),
+            "clients": [profile.to_dict() for profile in self.profiles()],
+        }
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_suffix(f"{destination.suffix}.tmp")
+        try:
+            temporary.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            temporary.replace(destination)
+        finally:
+            temporary.unlink(missing_ok=True)
         return destination
 
 def create_client_dataloaders(
@@ -134,6 +177,7 @@ def create_client_dataloaders(
             client_id = _holdout_client_id(sample, data, intervals)
             holdout_samples[client_id][split].append(sample)
 
+    _validate_train_assignments(data.datasets["train"], partition)
     _validate_train_counts(train_samples, partition)
     clients: dict[str, ClientDataLoaders] = {}
     for offset, (client_id, low, high) in enumerate(intervals):
@@ -154,12 +198,14 @@ def create_client_dataloaders(
             client_id=client_id,
             datasets=MappingProxyType(datasets),
             loaders=MappingProxyType(loaders),
-            profile=_profile(client_id, low, high, datasets, data),
+            profile=_profile(client_id, low, high, datasets, data, partition),
         )
     return ClientDataBundle(
         data_version=data.data_version,
         split_id=data.split_id,
         partition_id=_partition_id(partition),
+        scaler_id=_scaler_id(data),
+        holdout_intervals=intervals,
         clients=MappingProxyType(clients),
     )
 
@@ -211,6 +257,36 @@ def _validate_train_counts(
         )
 
 
+def _validate_train_assignments(train: TrajectoryDataset, partition: PartitionManifest) -> None:
+    assignments = {str(group_id): client_id for group_id, client_id in partition.assignment.items()}
+    seen_windows: set[str] = set()
+    for sample in train:
+        group_id = _group_id(sample)
+        expected = assignments.get(group_id)
+        actual = sample.meta.get("client_id")
+        if expected is None or actual != expected:
+            raise ClientDataError("train sample client_id does not match frozen group assignment")
+        window_id = json.dumps(
+            [
+                group_id,
+                sample.meta["history_start_frame"],
+                sample.meta["history_end_frame"],
+                sample.meta["future_start_frame"],
+                sample.meta["future_end_frame"],
+            ],
+            separators=(",", ":"),
+        )
+        if window_id in seen_windows:
+            raise ClientDataError("train split contains a duplicate window identity")
+        seen_windows.add(window_id)
+
+
+def _group_id(sample: TrajectorySample) -> str:
+    return json.dumps(
+        [sample.meta["recording_id"], sample.meta["vehicle_id"]], separators=(",", ":")
+    )
+
+
 def _dataset_like(
     reference: TrajectoryDataset, samples: list[TrajectorySample]
 ) -> TrajectoryDataset:
@@ -255,15 +331,19 @@ def _profile(
     high: float,
     datasets: Mapping[SplitName, TrajectoryDataset],
     data: ProcessedDataBundle,
+    partition: PartitionManifest,
 ) -> ClientDataProfile:
     train = datasets["train"]
     anchors = [float(data.inverse_transform(sample.history[-1:])[0, 0]) for sample in train]
     vehicles = {(sample.meta["recording_id"], sample.meta["vehicle_id"]) for sample in train}
+    partition_client = next(client for client in partition.clients if client.client_id == client_id)
+    group_ids = tuple(str(group_id) for group_id in partition_client.group_ids)
     return ClientDataProfile(
         client_id=client_id,
         x_min=low,
         x_max=high,
         vehicle_count=len(vehicles),
+        group_ids=group_ids,
         train_sample_count=len(train),
         validation_sample_count=len(datasets["validation"]),
         test_sample_count=len(datasets["test"]),
@@ -275,3 +355,14 @@ def _profile(
 def _partition_id(partition: PartitionManifest) -> str:
     payload = json.dumps(partition.to_mapping(), sort_keys=True, separators=(",", ":"))
     return "partition-v1-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _scaler_id(data: ProcessedDataBundle) -> str:
+    scaler = data.scaler
+    if scaler.mean_ is None or scaler.scale_ is None or scaler.fitted_split != "train":
+        raise ClientDataError("processed bundle does not expose a train-fitted scaler")
+    digest = hashlib.sha256()
+    digest.update(np.asarray(scaler.mean_, dtype=np.float32).tobytes())
+    digest.update(np.asarray(scaler.scale_, dtype=np.float32).tobytes())
+    digest.update(data.split_id.encode("utf-8"))
+    return "scaler-v1-" + digest.hexdigest()[:16]
