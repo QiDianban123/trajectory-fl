@@ -19,7 +19,6 @@ from src.data.dataset import TrajectoryDataset
 from src.data.loading import DataLoaderConfig, ProcessedDataBundle
 from src.data.partition import PartitionManifest
 from src.models.base import ModelContract, require_torch
-from src.training.batching import collate_trajectory_samples
 
 
 class ClientDataError(ValueError):
@@ -231,6 +230,9 @@ def _loader_for_dataset(
     config: DataLoaderConfig,
     seed_offset: int,
 ) -> Any:
+    # Keep data importable before training to preserve the frozen dependency direction.
+    from src.training.batching import collate_trajectory_samples
+
     torch = require_torch()
     generator = torch.Generator()
     generator.manual_seed(config.seed + seed_offset)
