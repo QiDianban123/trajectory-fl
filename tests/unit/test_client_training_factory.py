@@ -4,20 +4,27 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+import torch
+
 from src.federated.training_adapter import model_state_id, snapshot_model_state
 from src.federated.training_factory import (
     build_isolated_client_trainer,
     create_model_from_config,
     load_isolated_state,
 )
+from src.models.initialization import initialize_model
 
 
 def test_client_factory_creates_independent_models_and_local_epoch_trainers(config_bundle) -> None:
     model_config = deepcopy(config_bundle["model"])
     model_section = model_config["model"]
     initialization = model_config["training"]["initialization"]
-    first = create_model_from_config(model_section, initialization=initialization, seed=42)
-    second = create_model_from_config(model_section, initialization=initialization, seed=42)
+    torch.manual_seed(42)
+    first = create_model_from_config(model_section)
+    initialize_model(first, initialization)
+    torch.manual_seed(42)
+    second = create_model_from_config(model_section)
+    initialize_model(second, initialization)
     baseline = snapshot_model_state(first.state_dict())
 
     assert model_state_id(second.state_dict()) == baseline.state_id
@@ -32,7 +39,7 @@ def test_client_factory_creates_independent_models_and_local_epoch_trainers(conf
     )
 
     trainer = build_isolated_client_trainer(
-        model_config, seed=42, split_id="highd-split-42", local_epochs=3
+        "rsu_01", model_config=model_config, seed=42, split_id="highd-split-42", local_epochs=3
     )
     assert trainer.config.epochs == 3
     assert model_config["training"]["epochs"] == 1
