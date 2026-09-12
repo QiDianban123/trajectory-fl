@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import partial
 from math import isfinite
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -84,6 +85,23 @@ class ClientDataBundle:
     def profiles(self) -> tuple[ClientDataProfile, ...]:
         return tuple(self.clients[client_id].profile for client_id in sorted(self.clients))
 
+    def write_profiles(self, path: str | Path) -> Path:
+        """Export stable RSU/sample/coordinate diagnostics without raw trajectories."""
+
+        destination = Path(path)
+        payload = {
+            "schema_version": 1,
+            "data_version": self.data_version,
+            "split_id": self.split_id,
+            "partition_id": self.partition_id,
+            "clients": [profile.to_dict() for profile in self.profiles()],
+        }
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        return destination
+
 def create_client_dataloaders(
     data: ProcessedDataBundle,
     partition: PartitionManifest,
@@ -99,6 +117,8 @@ def create_client_dataloaders(
     post-merge client intervals.
     """
 
+    if config.drop_last:
+        raise ClientDataError("client loaders reject drop_last because it changes effective counts")
     intervals = _validate_intervals(partition)
     client_ids = tuple(client_id for client_id, _, _ in intervals)
     train_samples: dict[str, list[TrajectorySample]] = {client_id: [] for client_id in client_ids}

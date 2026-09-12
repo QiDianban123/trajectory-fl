@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -129,3 +130,90 @@ def test_holdout_anchor_outside_frozen_intervals_is_rejected(processed_cache) ->
     altered = replace(data, datasets=MappingProxyType({**data.datasets, "validation": validation}))
     with pytest.raises(ClientDataError, match="outside frozen client intervals"):
         _loaders(altered, _five_client_partition())
+
+
+def test_empty_train_client_is_retained_without_padding_or_training_loader_shuffle(
+    processed_cache,
+) -> None:
+    data = _bundle(processed_cache)
+    partition = PartitionManifest(
+        region_edges=(10.0, 15.0, 21.0),
+        clients=(
+            ClientPartition("rsu_01", 10.0, 15.0, 5, (0, 1, 2, 3, 4)),
+            ClientPartition("rsu_02", 15.0, 21.0, 0, ("reserved",)),
+        ),
+    )
+    train = TrajectoryDataset(
+        [
+            TrajectorySample(
+                history=sample.history.copy(),
+                future=sample.future.copy(),
+                meta={**sample.meta, "client_id": "rsu_01"},
+            )
+            for sample in data.datasets["train"]
+        ],
+        split="train",
+        split_id=data.split_id,
+        window_spec=data.datasets["train"].window_spec,
+    )
+    empty_train_data = replace(
+        data, datasets=MappingProxyType({**data.datasets, "train": train})
+    )
+    bundle = _loaders(empty_train_data, partition)
+    assert bundle.clients["rsu_02"].is_empty_train
+    assert list(bundle.clients["rsu_02"].loaders["train"]) == []
+    assert bundle.clients["rsu_02"].profile.train_sample_count == 0
+
+
+def test_client_loaders_reject_drop_last_and_duplicate_train_samples(processed_cache) -> None:
+    data = _bundle(processed_cache)
+    with pytest.raises(ClientDataError, match="reject drop_last"):
+        create_client_dataloaders(
+            data,
+            _five_client_partition(),
+            contract=ModelContract(history_steps=75, future_steps=125),
+            config=DataLoaderConfig(batch_size=2, num_workers=0, seed=17, drop_last=True),
+        )
+    duplicate_train = TrajectoryDataset(
+        [*data.datasets["train"], data.datasets["train"][0]],
+        split="train",
+        split_id=data.split_id,
+        window_spec=data.datasets["train"].window_spec,
+    )
+    duplicate_data = replace(
+        data, datasets=MappingProxyType({**data.datasets, "train": duplicate_train})
+    )
+    with pytest.raises(ClientDataError, match="sample counts do not match"):
+        _loaders(duplicate_data, _five_client_partition())
+
+
+def test_extreme_noniid_profile_and_export_are_rebuildable(processed_cache, tmp_path: Path) -> None:
+    data = _bundle(processed_cache)
+    train = TrajectoryDataset(
+        [
+            TrajectorySample(
+                history=sample.history.copy(),
+                future=sample.future.copy(),
+                meta={**sample.meta, "client_id": "rsu_01"},
+            )
+            for sample in data.datasets["train"]
+        ],
+        split="train",
+        split_id=data.split_id,
+        window_spec=data.datasets["train"].window_spec,
+    )
+    altered = replace(data, datasets=MappingProxyType({**data.datasets, "train": train}))
+    partition = PartitionManifest(
+        region_edges=(10.0, 21.0),
+        clients=(ClientPartition("rsu_01", 10.0, 21.0, 5, (0, 1, 2, 3, 4)),),
+    )
+    bundle = _loaders(altered, partition)
+    profile = bundle.clients["rsu_01"].profile
+    assert profile.vehicle_count == profile.train_sample_count == 5
+    assert profile.validation_sample_count == 3
+    assert profile.test_sample_count == 2
+    assert profile.sample_visits(3) == 15
+    output = bundle.write_profiles(tmp_path / "client_profiles.json")
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["partition_id"] == bundle.partition_id
+    assert payload["clients"] == [profile.to_dict()]
