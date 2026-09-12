@@ -33,14 +33,17 @@ split 按 `(recording_id, vehicle_id)` 互斥，holdout group 正常情况下不
 
 具体归属规则：只用 train partition 已冻结的 `region_edges` 与 post-merge
 `ClientPartition(x_min,x_max,client_id)` 建立不重叠、覆盖 `[region_edges[0], region_edges[-1]]` 的
-`holdout_intervals`。每个 validation/test window 在 inverse-transform 前取原始物理
-`history[-1, 0]` 为 `assignment_anchor_x`，按现有 `RegionIndex` 规则映射（内部边界归右、最后
+`holdout_intervals`。现有 processed `sample.history` 是归一化值，故每个 validation/test window 的
+精确 anchor 为 `bundle.scaler.inverse_transform(sample.history[-1:])[0, 0]`（只调用同一已冻结、
+train-fitted scaler 的 inverse_transform，绝不 fit）；shape/有限值失败立即 exit 2。按现有
+`RegionIndex` 规则映射（内部边界归右、最后
 右端点归最后区间）到唯一 client；不得用 holdout 重新计算边界、合并、样本数或 scaler。anchor
 超出冻结范围、非有限、区间重叠/空洞或缺 client 映射时，以 `ClientDataError` 拒绝请求（exit 2）。
 manifest 必须记录 `assignment_anchor="history_last_x_meter"`、intervals、每 split 的分配计数和
 out-of-range=0。`empty_train` client 不创建 ClientUpdate、不参与 FedAvg/成功汇总，但可保存其
 holdout 画像；`empty_validation`/`empty_test` 是 `ClientResultRecord(status="skipped",
-error_code="empty_evaluation")`，而非既有 ClientFailure。默认范围不支持重采样、`drop_last=True`、
+error_code="empty_evaluation")`，而非既有 ClientFailure，且不进入 macro/weighted 分母；若所有
+成功训练 client 都无 test，则 mode 记录 `failed/NoComparableEvaluation` 并 exit 非零。默认范围不支持重采样、`drop_last=True`、
 提前停止改变训练计数；这些配置必须拒绝。
 
 计数不可混用：
@@ -53,7 +56,7 @@ error_code="empty_evaluation")`，而非既有 ClientFailure。默认范围不�
 | `batch_count` | 实际 DataLoader batch 数 | 诊断，禁止作权重或指标分母 |
 
 例如 N=5、batch=2、local_epochs=3 时，权重数为 5、访问量为 15、batch 数为 3；三者必须同时
-记录但不互换。评价统一为每客户端 test；若 test 为空则记录 `empty_evaluation` failure，不将
+记录但不互换。评价统一为每客户端 test；若 test 为空则以上述 `skipped/empty_evaluation` 记录，不将
 validation 替代 test。汇总必须同时保存 macro（成功且有评价的客户端等权）和 weighted
 （以 `evaluation_sample_count` 加权）；三模式总表默认展示 weighted，并标注分母和成功集合。
 
@@ -97,10 +100,9 @@ w[r+1,k] = Σ(i∈successful_updates) (n_i / Σj n_j) × w[r+1,i,k]
 
 其中 `n_i = ClientUpdate.sample_count`，且成功集合非空。D 必须在建立 `AggregationRequest` 时断言
 `global_state_id == model_state_id(global_state)`；聚合输出必须计算
-`output_global_state_id = model_state_id(output_state)` 并使 `AggregationResult.global_state_id` 表示
-该 **output** ID（新增 `input_global_state_id` 字段记录输入）。精确增量签名为
-`AggregationResult(state, input_global_state_id, global_state_id, round_index, participating_client_ids, total_sample_count)`；
-构造时必须分别 hash 校验 input 与 output state。key/shape/dtype/finite、round、
+`output_global_state_id = model_state_id(output_state)`。D2 `AggregationRequest` 与
+`AggregationResult` 构造签名和 `global_state_id` 语义均不变；D 的 S3 wrapper 在调用前后完成
+内容 hash 校验，并将 input/output ID 写入新的 `RoundRecord`，不向旧类型添加必填字段。key/shape/dtype/finite、round、
 client 唯一性仍复用现有 `validate_client_update`/`AggregationRequest` 并增加前述内容 hash 校验。
 非浮点 tensor 一律 `preserve_global`，即复制输入 global state，不能平均
 客户端 buffer。任何重复/过期/NaN/Inf/空权重、未选 client 上传、选择 client 缺显式结果均拒绝；
@@ -126,6 +128,12 @@ FairnessRecord(
   data_version, split_id, partition_id, scaler_id, model_config_digest, seed,
   initial_state_id, metric_schema, planned_budget, actual_budget, comparable, reason
 )
+LocalOnlyRunRequest(identity, initial_state, client_loaders, model_factory,
+  trainer_factory, evaluation_factory, output_dir) -> LocalOnlyRunResult(
+  client_records, terminal_failures, completed_client_ids, actual_budget)
+FederatedRoundRequest(identity, round_index, input_global_state, selection,
+  client_loaders, model_factory, trainer_factory, evaluation_factory) -> FederatedRoundResult(
+  round_record, output_global_state | None, client_records, terminal_failures)
 ```
 
 所有 artifact path 是 run root 下的 POSIX 相对安全路径。`ClientResultRecord.status ∈ {completed, failed, skipped}`，
@@ -140,6 +148,13 @@ evaluation count，不得为不透明 mapping。v2 顶层固定为
 为单个兼容 ResultRecord v1（仅在 completed 且 comparable 时存在），clients/rounds 是唯一事实源，
 CSV 路径在 `artifacts.results_csv`。v1 reader 遇 v2 必须读取 summary 和 records；v2 reader 遇 v1
 仅生成 Centralized historical summary。
+
+`identity` 是必填 object，且只含 §1 的八个 string/int identity 字段；`fairness` 是必填
+FairnessRecord object，`planned_budget`/`actual_budget` 是 `{sample_visits:int, local_epochs:int,
+rounds:int, selected_clients:list[str]}`；`clients` 按 client_id 字典序、`rounds` 按 round_index
+升序，`failures` 按 `(client_id, stage)` 排序，`aggregation_weights` 是 client_id → 正有限 float
+且和为 1。`artifacts` 是 string → safe relative path。`summary` 可为 null：v1 reader 遇 v2 null
+summary 必须保留 run status/error/records 但不得比较；v2 reader 遇 v1 只生成 historical summary。
 E 从这些结构化记录生成 Client/macro/weighted summary、round 曲线和 comparison figure；JSON 为
 事实源，CSV/图表只从同一对象导出。
 
@@ -182,8 +197,11 @@ python scripts/run_three_mode_smoke.py
 ```
 
 所有 CLI path 必须经 `resolve_within(project_root, ...)`：data/model/experiment 在 `configs/`，
-processed/output/run/resume 均在允许的 project root 子树，`run_id` 复用 `validate_run_id`；已有 output、
-重复/并发 run ID、跨模式 resume、resume identity 不符均 exit 2。`three_mode_smoke.yaml` 必须含 `mode_matrix`（三模式）、`rounds`、`local_epochs`、
+processed 仅允许 `data/processed/**` 或 `outputs/<safe-workspace>/processed/**`；输出仅允许
+`outputs/<safe-run-id>/`；resume 仅允许目标 run 自身的 `outputs/<safe-run-id>/checkpoints/**`，且
+Centralized checkpoint 只能 resume Centralized、S3 resume manifest 只能 resume 同 mode/identity。
+`run_id` 复用 `validate_run_id`；已有 output、重复/并发 run ID、跨模式 resume、resume identity 不符均
+exit 2。`three_mode_smoke.yaml` 必须含 `mode_matrix`（三模式）、`rounds`、`local_epochs`、
 `clients_per_round`、公平性 identity 和恢复策略；A 的 `validate-config` 必须先校验 schema 与
 identity，再创建模型/loader/输出目录。`run_three_mode_smoke.py` 不接收参数：生成匿名小样例、
 校验三份配置、调用上述生产 runner、核验 manifest/ResultRecord/图表/预算；失败非零。UI 仅用
