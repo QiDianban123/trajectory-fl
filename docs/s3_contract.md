@@ -159,7 +159,8 @@ summary 必须保留 run status/error/records 但不得比较；v2 reader 遇 v1
 若成功更新非空，RoundRecord 为 `completed`、`aggregation_weights` 每值正且和为 1、
 `total_train_sample_count>0`、output ID 为 hash 后 state；若全失败，RoundRecord 为 `failed`、
 `error_code="NoSuccessfulUpdates"`、`aggregation_weights={}`、`total_train_sample_count=0`、
-`output_global_state_id=null`、`output_global_state=None`，不得调用 AggregationRequest/聚合。
+`output_global_state_id=null`、`output_global_state=None`，且 `error_message` 必须非空；不得调用
+AggregationRequest/聚合。
 E 从这些结构化记录生成 Client/macro/weighted summary、round 曲线和 comparison figure；JSON 为
 事实源，CSV/图表只从同一对象导出。
 
