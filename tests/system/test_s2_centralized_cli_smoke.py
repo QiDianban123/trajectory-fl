@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def test_one_command_centralized_smoke() -> None:
     relative_workspace = Path("outputs") / f"pytest-s2-a-{uuid.uuid4().hex}"
     workspace = PROJECT_ROOT / relative_workspace
+    environment = os.environ.copy()
+    environment.pop("MPLBACKEND", None)
     try:
         completed = subprocess.run(
             [
@@ -27,6 +30,7 @@ def test_one_command_centralized_smoke() -> None:
             capture_output=True,
             text=True,
             timeout=120,
+            env=environment,
         )
         assert completed.returncode == 0, completed.stderr
         assert "Centralized smoke loss:" in completed.stdout
