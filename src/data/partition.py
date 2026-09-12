@@ -11,6 +11,7 @@ are added on Day 4 via :func:`partition_train_groups`.
 from __future__ import annotations
 
 import bisect
+import json
 import math
 import numbers
 from collections.abc import Iterable, Mapping, Sequence
@@ -25,6 +26,20 @@ _SUPPORTED_AXES = ("x",)
 _CONFIG_KEYS = frozenset(
     {"num_clients", "axis", "client_id_prefix", "region_edges", "min_samples_per_client"}
 )
+
+
+def client_group_id(recording_id: object, vehicle_id: object) -> str:
+    """Return the one canonical persisted train-group key for client ownership."""
+
+    if isinstance(recording_id, bool) or not isinstance(recording_id, (str, numbers.Integral)):
+        raise PartitionError("recording_id must be a string or integer")
+    if isinstance(vehicle_id, bool) or not isinstance(vehicle_id, (str, numbers.Integral)):
+        raise PartitionError("vehicle_id must be a string or integer")
+    try:
+        normalized_vehicle = int(vehicle_id)
+    except (TypeError, ValueError) as exc:
+        raise PartitionError("vehicle_id must be integer-like for client ownership") from exc
+    return json.dumps([str(recording_id), normalized_vehicle], separators=(",", ":"))
 
 
 class PartitionError(ValueError):
