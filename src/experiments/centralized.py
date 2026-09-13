@@ -59,6 +59,7 @@ class CentralizedExperimentRequest:
     expected_data_version: str | None = None
     expected_split_id: str | None = None
     resume_checkpoint: str | Path | None = None
+    initial_state: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +149,8 @@ class CentralizedExperiment:
                 if not callable(loader):
                     raise TypeError("trainer must expose load_checkpoint for resume")
                 loader(model, request.resume_checkpoint)
+            elif request.initial_state is not None:
+                model.load_state_dict(clone_model_state(request.initial_state), strict=True)
             else:
                 initialize_model(model, bundle["model"]["training"]["initialization"])
             fit_result = run_centralized(

@@ -144,4 +144,21 @@ metrics、manifest、日志、checkpoint 和图表从 run 目录只读加载。
 运行前会严格核验数据、划分、分区、scaler、模型配置、seed、初态、指标 schema 和计划预算。
 重复 run、完成运行覆盖、错误身份或损坏恢复包在训练前拒绝；运行后预算不一致会保留单模式
 产物，但标记 `comparable=false` 并返回非零结果。JSON 是唯一事实源，`results.csv` 只从结构化
-客户端记录导出。S3 的 CLI/UI 仍须等待 A/F/UI 后续集成和真人批准后才能启用。
+客户端记录导出。
+
+## S3-A 三模式生产 CLI 候选
+
+三种模式共用同一入口；配置中的 `run.mode` 必须与命令一致：
+
+```powershell
+python -m src.cli validate-config --experiment configs/experiments/s3_federated_smoke.yaml
+python -m src.cli train --mode centralized --experiment configs/experiments/s3_centralized_smoke.yaml --processed-dir data/processed/<split_id> --output-root outputs --run-id <run_id>
+python -m src.cli train --mode local_only --experiment configs/experiments/s3_local_only_smoke.yaml --processed-dir data/processed/<split_id> --output-root outputs --run-id <run_id>
+python -m src.cli train --mode federated --experiment configs/experiments/s3_federated_smoke.yaml --processed-dir data/processed/<split_id> --output-root outputs --run-id <run_id>
+python scripts/run_three_mode_smoke.py
+```
+
+Local-only/Federated 从失败或中断边界恢复时，复用原 `run-id` 并增加
+`--resume-checkpoint checkpoints/recovery.json`。配置、processed 数据、输出和恢复路径均受仓库
+白名单限制；模式失败返回非零并保留 manifest。当前 UI 仍只开放 Centralized；可用命令清单为
+`status`、`validate-config`、`prepare-data`、上述三个 `train` 模式及无参数三模式 smoke。

@@ -443,11 +443,16 @@ def test_three_mode_matrix_rejects_each_identity_and_budget_field() -> None:
         changed["federated"][field] = 8 if field == "seed" else "other"
         with pytest.raises(ExperimentInputError, match="identity mismatch"):
             validate_three_mode_matrix(changed, budgets)
-    for field in budget:
+    for field in ("sample_visits", "selected_clients"):
         changed = {mode: dict(value) for mode, value in budgets.items()}
         changed["federated"][field] = ["rsu_01"] if field == "selected_clients" else 2
-        with pytest.raises(ExperimentInputError, match="planned budgets"):
+        with pytest.raises(ExperimentInputError, match="planned"):
             validate_three_mode_matrix(identities, changed)
+
+    equivalent = {mode: dict(value) for mode, value in budgets.items()}
+    equivalent["local_only"].update(local_epochs=2, rounds=1)
+    equivalent["federated"].update(local_epochs=1, rounds=2)
+    assert validate_three_mode_matrix(identities, equivalent).exit_code == 0
 
 
 def test_three_mode_runner_retains_successes_and_reports_actual_budget_mismatch() -> None:

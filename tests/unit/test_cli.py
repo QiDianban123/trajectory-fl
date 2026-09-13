@@ -1,6 +1,7 @@
 """Tests for A's command-line contract."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from src.cli import main
 
@@ -9,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 def test_status_command(capsys: object) -> None:
     assert main(["status"]) == 0
-    assert "D2 design review complete" in capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "S3 three-mode CLI candidate" in capsys.readouterr().out  # type: ignore[attr-defined]
 
 
 def test_validate_default_config_bundle(capsys: object) -> None:
@@ -23,7 +24,7 @@ def test_validate_missing_config_returns_error(capsys: object) -> None:
 
 
 def test_train_rejects_unknown_mode(capsys: object) -> None:
-    assert main(["train", "--mode", "federated"]) == 2
+    assert main(["train", "--mode", "unknown"]) == 2
     assert "unsupported mode" in capsys.readouterr().err  # type: ignore[attr-defined]
 
 
@@ -67,3 +68,25 @@ def test_train_reports_corrupt_checkpoint(capsys: object, monkeypatch: object) -
     )
     assert main(["train", "--mode", "centralized", "--resume-checkpoint", "corrupt.pt"]) == 2
     assert "cannot load checkpoint" in capsys.readouterr().err  # type: ignore[attr-defined]
+
+
+def test_s3_mode_failure_returns_nonzero(capsys: object, monkeypatch: object) -> None:
+    failed = SimpleNamespace(
+        result=SimpleNamespace(
+            run_id="failed", status="failed", exit_code=1, manifest_path=Path("manifest.json")
+        )
+    )
+    monkeypatch.setattr("src.cli.run_mode", lambda *args, **kwargs: failed)  # type: ignore[attr-defined]
+    assert (
+        main(
+            [
+                "train",
+                "--mode",
+                "local_only",
+                "--experiment",
+                "configs/experiments/s3_local_only_smoke.yaml",
+            ]
+        )
+        == 1
+    )
+    assert "status=failed" in capsys.readouterr().out  # type: ignore[attr-defined]
