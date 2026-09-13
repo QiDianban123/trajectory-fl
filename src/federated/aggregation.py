@@ -104,6 +104,8 @@ class FedAvgAggregator:
         if request.global_state_id != model_state_id(request.global_state):
             raise FederatedContractError("global_state_id does not match global_state contents")
         global_state = clone_model_state(request.global_state)
+        for update in request.updates:
+            validate_client_update(update, global_state)
         total = request.total_sample_count
         state = {}
         for key, global_value in global_state.items():

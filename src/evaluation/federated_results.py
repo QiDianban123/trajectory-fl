@@ -56,6 +56,22 @@ class RoundRecord:
             raise ValueError("completed rounds require loss, ADE, and FDE")
 
 
+@dataclass(frozen=True)
+class ComparisonIdentity:
+    """All frozen controls required before a multi-mode comparison."""
+
+    partition_id: str
+    scaler_id: str
+    model_config_digest: str
+    initial_state_id: str
+    metric_schema: str
+    budget_id: str
+
+    def __post_init__(self) -> None:
+        if any(not isinstance(value, str) or not value.strip() for value in self.__dict__.values()):
+            raise ValueError("comparison identity fields must be non-empty strings")
+
+
 def summarize_client_results(
     records: Sequence[ClientResultRecord],
 ) -> tuple[ResultRecord, ResultRecord]:
@@ -75,11 +91,28 @@ def summarize_client_results(
     weighted_ade = sum(item.record.ade * item.record.sample_count for item in completed) / total
     weighted_fde = sum(item.record.fde * item.record.sample_count for item in completed) / total
     base = dict(reference.__dict__)
+    total_seconds = sum(item.record.total_seconds for item in completed)
     macro = ResultRecord(
-        **{**base, "sample_count": len(completed), "ade": macro_ade, "fde": macro_fde}
+        **{
+            **base,
+            "run_id": f"{reference.run_id}:macro",
+            "sample_count": total,
+            "ade": macro_ade,
+            "fde": macro_fde,
+            "total_seconds": total_seconds,
+            "artifact_paths": {},
+        }
     )
     weighted = ResultRecord(
-        **{**base, "sample_count": total, "ade": weighted_ade, "fde": weighted_fde}
+        **{
+            **base,
+            "run_id": f"{reference.run_id}:weighted",
+            "sample_count": total,
+            "ade": weighted_ade,
+            "fde": weighted_fde,
+            "total_seconds": total_seconds,
+            "artifact_paths": {},
+        }
     )
     return macro, weighted
 
@@ -118,7 +151,7 @@ def compare_modes(
     records: Sequence[ResultRecord],
     output_path: str | Path,
     *,
-    identities: Sequence[tuple[str, str]],
+    identities: Sequence[ComparisonIdentity],
 ) -> Path:
     """Reject incomparable/failed/duplicate modes before using the shared bar plot."""
 

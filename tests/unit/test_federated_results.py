@@ -4,6 +4,7 @@ import pytest
 
 from src.evaluation.federated_results import (
     ClientResultRecord,
+    ComparisonIdentity,
     RoundRecord,
     compare_modes,
     plot_round_metrics,
@@ -26,7 +27,9 @@ def test_client_macro_and_weighted_use_evaluation_counts() -> None:
             ClientResultRecord(_record(samples=8, ade=3, fde=6), "rsu_02", 5, 15),
         ]
     )
-    assert (macro.ade, macro.fde, macro.sample_count) == (2.0, 4.0, 2)
+    assert (macro.ade, macro.fde, macro.sample_count) == (2.0, 4.0, 10)
+    assert macro.run_id == "run:macro"
+    assert weighted.run_id == "run:weighted"
     assert weighted.ade == pytest.approx(2.6)
     assert weighted.fde == pytest.approx(5.2)
 
@@ -40,7 +43,13 @@ def test_round_and_mode_plot_reject_failures_and_identity_mismatch(tmp_path: Pat
         compare_modes(
             [_record("centralized"), _record("federated", seed=8)],
             tmp_path / "x.png",
-            identities=[("i", "b"), ("i", "b")],
+            identities=[_identity(), _identity()],
+        )
+    with pytest.raises(ValueError, match="initial-state and budget"):
+        compare_modes(
+            [_record("centralized"), _record("federated")],
+            tmp_path / "x.png",
+            identities=[_identity(), _identity(initial_state_id="other")],
         )
     failed = ResultRecord(
         **{**_record("federated").__dict__, "status": "failed", "error": "client failed"}
@@ -49,11 +58,24 @@ def test_round_and_mode_plot_reject_failures_and_identity_mismatch(tmp_path: Pat
         compare_modes(
             [_record("centralized"), failed],
             tmp_path / "x.png",
-            identities=[("i", "b"), ("i", "b")],
+            identities=[_identity(), _identity()],
         )
     with pytest.raises(ValueError, match="at most one"):
         compare_modes(
             [_record("centralized"), _record("centralized", ade=2)],
             tmp_path / "x.png",
-            identities=[("i", "b"), ("i", "b")],
+            identities=[_identity(), _identity()],
         )
+
+
+def _identity(**overrides: str) -> ComparisonIdentity:
+    values = {
+        "partition_id": "partition",
+        "scaler_id": "scaler",
+        "model_config_digest": "model",
+        "initial_state_id": "initial",
+        "metric_schema": "metric-v1",
+        "budget_id": "budget",
+    }
+    values.update(overrides)
+    return ComparisonIdentity(**values)
