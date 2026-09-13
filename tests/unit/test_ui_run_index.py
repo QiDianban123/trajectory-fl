@@ -80,3 +80,30 @@ def test_run_index_reads_s3_v2_summary_and_structured_facts(tmp_path: Path) -> N
         1,
         1,
     )
+
+
+def test_v2_summary_overrides_intermediate_metrics_file(tmp_path: Path) -> None:
+    run_dir = tmp_path / "outputs" / "local-42"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "run_id": "local-42",
+                "identity": {"split_id": "s"},
+                "summary": {
+                    "status": "completed",
+                    "mode": "local_only",
+                    "seed": 1,
+                    "sample_count": 1,
+                    "ade": 2.0,
+                    "fde": 3.0,
+                    "total_seconds": 4.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "metrics.json").write_text('{"status":"failed"}', encoding="utf-8")
+    run = discover_runs(tmp_path)[0]
+    assert (run.status, run.ade, run.fde, run.total_seconds) == ("completed", 2.0, 3.0, 4.0)
