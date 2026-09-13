@@ -9,6 +9,7 @@ from src.federated.training_adapter import (
     ModelStateSnapshot,
     clone_model_state,
     fit_result_to_client_update,
+    fit_result_to_last_epoch_client_update,
     model_state_id,
     snapshot_model_state,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "ModelStateSnapshot",
     "clone_model_state",
     "fit_result_to_client_update",
+    "fit_result_to_last_epoch_client_update",
     "model_state_id",
     "snapshot_model_state",
 ]

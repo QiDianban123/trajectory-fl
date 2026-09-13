@@ -124,6 +124,45 @@ def fit_result_to_client_update(
     )
 
 
+def fit_result_to_last_epoch_client_update(
+    fit_result: FitResult,
+    *,
+    client_id: str,
+    round_index: int,
+    global_state_id: str,
+    reference_state: ModelState,
+) -> ClientUpdate:
+    """Map the frozen S3 final-local-epoch state to one ClientUpdate."""
+
+    payload = fit_result.last_checkpoint_payload
+    if payload is None:
+        raise FederatedContractError("S3 local training requires last_checkpoint_payload")
+    checkpoint_state = payload["model_state"]
+    if not isinstance(checkpoint_state, Mapping):
+        raise ModelStateError("last checkpoint model_state must be a state_dict mapping")
+    state = clone_model_state(checkpoint_state)
+    validate_model_state(state, reference_state)
+    sample_counts = {stat.sample_count for stat in fit_result.epoch_stats}
+    if len(sample_counts) != 1:
+        raise FederatedContractError("FitResult sample_count must be stable across epochs")
+    last = fit_result.epoch_stats[-1]
+    stats: dict[str, float] = {
+        "best_epoch": float(fit_result.best_epoch),
+        "epoch_count": float(len(fit_result.epoch_stats)),
+        "train_loss": float(last.train_loss),
+    }
+    if last.validation_loss is not None:
+        stats["validation_loss"] = float(last.validation_loss)
+    return ClientUpdate(
+        client_id=client_id,
+        round_index=round_index,
+        global_state_id=global_state_id,
+        state=state,
+        sample_count=last.sample_count,
+        stats=stats,
+    )
+
+
 class LocalTrainerAdapter:
     """A federated client implementation that delegates optimization to Trainer."""
 
@@ -173,7 +212,7 @@ class LocalTrainerAdapter:
         # Re-hash the caller-owned state to make baseline mutation observable immediately.
         if model_state_id(request.global_state) != request.global_state_id:
             raise ModelStateError("dispatched global_state was mutated during local training")
-        return fit_result_to_client_update(
+        return fit_result_to_last_epoch_client_update(
             result,
             client_id=self.client_id,
             round_index=request.round_index,

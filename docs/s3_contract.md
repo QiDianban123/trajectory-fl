@@ -68,10 +68,12 @@ Proposed 公共工厂为：
 
 ```text
 create_model_from_config(model_config) -> TrajectoryPredictor
-build_isolated_client_trainer(client_id, *, seed, split_id, local_epochs) -> TorchTrainer
+build_isolated_client_trainer(client_id, *, model_config, seed, split_id, local_epochs) -> TorchTrainer
 ```
 
-它每次返回新模型、新 optimizer（由 Trainer.fit 内创建）和独立 RNG 作用域；不得共享 parameter
+`create_model_from_config` 仅构造新模型；A/G 在一次共享 seed 作用域中调用现有
+`initialize_model` 生成基线，再用 clone/hash 下发。trainer 工厂的 `model_config` 是显式绑定，避免
+隐式全局配置。它每次返回新模型、新 optimizer（由 Trainer.fit 内创建）和独立 RNG 作用域；不得共享 parameter
 storage、optimizer 或训练后 state。`local_epochs` 仅允许正整数，映射为该 client 的
 `TorchTrainerConfig.epochs`，不会修改共享 `configs/model.yaml`。
 
