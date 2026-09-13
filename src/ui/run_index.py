@@ -26,6 +26,24 @@ class RunSummary:
     fde: float | None
     total_seconds: float | None
     artifacts: dict[str, Path]
+    fairness: dict[str, object] | None = None
+    clients: tuple[dict[str, object], ...] = ()
+    rounds: tuple[dict[str, object], ...] = ()
+
+
+class ArtifactResolver:
+    """Resolve only manifest-relative artifacts that remain inside the run root."""
+
+    def __init__(self, run_dir: str | Path) -> None:
+        self.run_dir = Path(run_dir).resolve()
+
+    def resolve(self, relative_path: object) -> Path | None:
+        if not isinstance(relative_path, str):
+            return None
+        try:
+            return resolve_within(self.run_dir, relative_path)
+        except ValueError:
+            return None
 
 
 def discover_runs(project_root: str | Path, output_root: str = "outputs") -> list[RunSummary]:
@@ -52,20 +70,23 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
         return None
     run_dir = manifest_path.parent
     run_id = manifest.get("run_id")
+    identity = manifest.get("identity")
     split_id = manifest.get("split_id")
+    if not isinstance(split_id, str) and isinstance(identity, dict):
+        split_id = identity.get("split_id")
     if not isinstance(run_id, str) or not isinstance(split_id, str):
         return None
     metrics = _read_json(run_dir / "metrics.json")
     history = _read_json(run_dir / "training_history.json")
     artifact_paths: dict[str, Path] = {}
+    resolver = ArtifactResolver(run_dir)
     artifacts = manifest.get("artifacts", {})
     if isinstance(artifacts, dict):
         for name, relative_path in artifacts.items():
             if isinstance(name, str) and isinstance(relative_path, str):
-                try:
-                    artifact_paths[name] = resolve_within(run_dir, relative_path)
-                except ValueError:
-                    continue
+                resolved = resolver.resolve(relative_path)
+                if resolved is not None:
+                    artifact_paths[name] = resolved
     metrics_values = metrics.get("metrics", {}) if isinstance(metrics, dict) else {}
     timing = metrics.get("timing_seconds", {}) if isinstance(metrics, dict) else {}
     return RunSummary(
@@ -78,6 +99,8 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
         data_version=(
             manifest.get("data_version")
             if isinstance(manifest.get("data_version"), str)
+            else identity.get("data_version")
+            if isinstance(identity, dict) and isinstance(identity.get("data_version"), str)
             else None
         ),
         best_epoch=history.get("best_epoch") if isinstance(history, dict) else None,
@@ -86,6 +109,9 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
         fde=metrics_values.get("fde") if isinstance(metrics_values, dict) else None,
         total_seconds=timing.get("total") if isinstance(timing, dict) else None,
         artifacts=artifact_paths,
+        fairness=manifest.get("fairness") if isinstance(manifest.get("fairness"), dict) else None,
+        clients=tuple(item for item in manifest.get("clients", []) if isinstance(item, dict)),
+        rounds=tuple(item for item in manifest.get("rounds", []) if isinstance(item, dict)),
     )
 
 

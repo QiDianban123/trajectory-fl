@@ -9,25 +9,27 @@ import streamlit as st
 
 from src.ui.capabilities import (
     UiCommandError,
-    build_centralized_train_command,
+    build_s3_train_command,
     build_smoke_command,
-    s2_capabilities,
+    build_three_mode_smoke_command,
+    preflight_s3_fairness,
+    s3_capabilities,
 )
-from src.ui.command_runner import CommandResult, CommandRunner
+from src.ui.command_runner import CommandResult, CommandRunner, UiRunState
 from src.ui.run_index import RunSummary, discover_runs
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def main() -> None:
-    """Render the S2-only working surface."""
+    """Render the S3 controlled three-mode console."""
 
     st.set_page_config(page_title="Trajectory-FL 控制台", page_icon="◈", layout="wide")
     _style()
-    st.title("S2 · 集中式实验控制台")
-    st.caption("仅执行已验收的集中式入口；所有结果从保存的 manifest 与 ResultRecord 读取。")
+    st.title("S3 · 三模式实验控制台")
+    st.caption("仅执行生产 CLI；结果、RSU、轮次和公平性均从结构化 manifest 读取。")
     _status_bar()
-    capabilities = s2_capabilities()
+    capabilities = s3_capabilities()
     with st.sidebar:
         st.header("运行参数")
         action = st.radio(
@@ -62,9 +64,9 @@ def _style() -> None:
 
 def _status_bar() -> None:
     columns = st.columns(4)
-    columns[0].metric("阶段", "S2 / MS3")
+    columns[0].metric("阶段", "S3 / MS4 核心")
     columns[1].metric("后端", "健康")
-    columns[2].metric("允许模式", "Centralized")
+    columns[2].metric("允许模式", "三模式")
     columns[3].metric("运行目录", "outputs/")
 
 
@@ -72,28 +74,46 @@ def _build_command(action: str):
     if action == "centralized_smoke":
         workspace = f"outputs/ui-smoke-{int(time.time())}"
         return build_smoke_command(PROJECT_ROOT, workspace)
+    if action == "three_mode_smoke":
+        return build_three_mode_smoke_command(PROJECT_ROOT)
     processed_options = _processed_options()
     if not processed_options:
         st.warning("未找到已准备的 processed 数据。请先执行集中式 smoke。")
         return None
     processed_dir = st.selectbox("Processed 数据", processed_options)
-    run_id = st.text_input("run_id", value=f"centralized-ui-{int(time.time())}")
-    seed = st.number_input("seed", min_value=0, value=42, step=1)
-    epochs = st.number_input("epochs", min_value=1, value=1, step=1)
-    batch_size = st.number_input("batch size", min_value=1, value=32, step=1)
+    mode = action.removesuffix("_train").removesuffix("_resume")
+    run_id = st.text_input("run_id", value=f"{mode}-ui-{int(time.time())}")
     try:
-        return build_centralized_train_command(
-            PROJECT_ROOT,
-            data_config="configs/data.yaml",
-            model_config="configs/model.yaml",
-            experiment_config="configs/experiments/smoke.yaml",
-            processed_dir=processed_dir,
-            output_root="outputs",
-            run_id=run_id,
-            seed=int(seed),
-            epochs=int(epochs),
-            batch_size=int(batch_size),
-        )
+        if action == "centralized_train":
+            preflight = preflight_s3_fairness(
+                PROJECT_ROOT,
+                mode="centralized",
+                experiment_config="configs/experiments/s3_centralized_smoke.yaml",
+            )
+            _show_fairness(preflight)
+            return build_s3_train_command(
+                PROJECT_ROOT, mode="centralized", processed_dir=processed_dir, run_id=run_id
+            )
+        if action in ("local_only_train", "federated_train"):
+            preflight = preflight_s3_fairness(
+                PROJECT_ROOT,
+                mode=mode,
+                experiment_config=f"configs/experiments/s3_{mode}_smoke.yaml",
+            )
+            _show_fairness(preflight)
+            return build_s3_train_command(
+                PROJECT_ROOT, mode=mode, processed_dir=processed_dir, run_id=run_id
+            )
+        if action == "resume":
+            selected_mode = st.selectbox("恢复模式", ("local_only", "federated"))
+            return build_s3_train_command(
+                PROJECT_ROOT,
+                mode=selected_mode,
+                processed_dir=processed_dir,
+                run_id=run_id,
+                resume=True,
+            )
+        raise UiCommandError("未注册的 UI 操作")
     except UiCommandError as exc:
         st.error(str(exc))
         return None
@@ -101,6 +121,7 @@ def _build_command(action: str):
 
 def _run_command(command) -> None:
     result = CommandRunner(PROJECT_ROOT).run(command)
+    st.session_state["ui_run_state"] = UiRunState(command.run_id, result.state, result)
     st.session_state["last_result"] = result
     if result.succeeded:
         st.success(f"操作完成，退出码 {result.exit_code}")
@@ -110,10 +131,12 @@ def _run_command(command) -> None:
 
 def _command_console() -> None:
     st.subheader("受控命令台")
-    result = st.session_state.get("last_result")
+    state = st.session_state.get("ui_run_state", UiRunState(None, "idle"))
+    result = state.result if isinstance(state, UiRunState) else None
     if isinstance(result, CommandResult):
         st.caption(
-            f"开始：{result.started_at} · 结束：{result.finished_at} · 退出码：{result.exit_code}"
+            f"状态：{result.state} · 开始：{result.started_at} · "
+            f"结束：{result.finished_at} · 退出码：{result.exit_code}"
         )
         st.code(result.stdout or "(无输出)", language="text")
     else:
@@ -144,6 +167,12 @@ def _show_metrics(run: RunSummary) -> None:
     st.caption(
         f"split_id: {run.split_id} · data_version: {run.data_version or '—'} · seed: {run.seed}"
     )
+    if run.fairness is not None:
+        st.json(run.fairness, expanded=False)
+    if run.clients:
+        st.dataframe(list(run.clients), use_container_width=True)
+    if run.rounds:
+        st.dataframe(list(run.rounds), use_container_width=True)
     figure = run.run_dir / "figures" / "loss_curve.png"
     trajectory = run.run_dir / "figures" / "prediction_trajectory.png"
     images = [path for path in (figure, trajectory) if path.is_file()]
@@ -185,6 +214,14 @@ def _processed_options() -> list[str]:
 
 def _format_number(value: float | None, unit: str) -> str:
     return "—" if value is None else f"{value:.4f} {unit}"
+
+
+def _show_fairness(preflight) -> None:
+    if preflight.allowed:
+        st.success(preflight.reason)
+        st.json(preflight.fields, expanded=False)
+    else:
+        st.error(preflight.reason)
 
 
 if __name__ == "__main__":
