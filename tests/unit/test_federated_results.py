@@ -37,11 +37,23 @@ def test_round_and_mode_plot_reject_failures_and_identity_mismatch(tmp_path: Pat
     paths = plot_round_metrics([RoundRecord(0, "completed", 1, 2, 3)], tmp_path)
     assert all(path.is_file() for path in paths)
     with pytest.raises(ValueError, match="comparison identity"):
-        compare_modes([_record("centralized"), _record("federated", seed=8)], tmp_path / "x.png", identities=[("i", "b"), ("i", "b")])
+        compare_modes(
+            [_record("centralized"), _record("federated", seed=8)],
+            tmp_path / "x.png",
+            identities=[("i", "b"), ("i", "b")],
+        )
     failed = ResultRecord(
         **{**_record("federated").__dict__, "status": "failed", "error": "client failed"}
     )
     with pytest.raises(ValueError, match="failed records"):
-        compare_modes([_record("centralized"), failed], tmp_path / "x.png", identities=[("i", "b"), ("i", "b")])
+        compare_modes(
+            [_record("centralized"), failed],
+            tmp_path / "x.png",
+            identities=[("i", "b"), ("i", "b")],
+        )
     with pytest.raises(ValueError, match="at most one"):
-        compare_modes([_record("centralized"), _record("centralized", ade=2)], tmp_path / "x.png", identities=[("i", "b"), ("i", "b")])
+        compare_modes(
+            [_record("centralized"), _record("centralized", ade=2)],
+            tmp_path / "x.png",
+            identities=[("i", "b"), ("i", "b")],
+        )

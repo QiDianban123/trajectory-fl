@@ -115,7 +115,10 @@ def plot_round_metrics(
 
 
 def compare_modes(
-    records: Sequence[ResultRecord], output_path: str | Path, *, identities: Sequence[tuple[str, str]]
+    records: Sequence[ResultRecord],
+    output_path: str | Path,
+    *,
+    identities: Sequence[tuple[str, str]],
 ) -> Path:
     """Reject incomparable/failed/duplicate modes before using the shared bar plot."""
 
