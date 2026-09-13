@@ -77,6 +77,7 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
     if not isinstance(run_id, str) or not isinstance(split_id, str):
         return None
     metrics = _read_json(run_dir / "metrics.json")
+    summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
     history = _read_json(run_dir / "training_history.json")
     artifact_paths: dict[str, Path] = {}
     resolver = ArtifactResolver(run_dir)
@@ -87,14 +88,17 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
                 resolved = resolver.resolve(relative_path)
                 if resolved is not None:
                     artifact_paths[name] = resolved
-    metrics_values = metrics.get("metrics", {}) if isinstance(metrics, dict) else {}
-    timing = metrics.get("timing_seconds", {}) if isinstance(metrics, dict) else {}
+    facts = metrics if isinstance(metrics, dict) else summary
+    metrics_values = facts.get("metrics", {}) if isinstance(facts, dict) else {}
+    timing = facts.get("timing_seconds", {}) if isinstance(facts, dict) else {}
     return RunSummary(
         run_dir=run_dir,
         run_id=run_id,
-        status=metrics.get("status", "unknown") if isinstance(metrics, dict) else "unknown",
-        mode=metrics.get("mode", "unknown") if isinstance(metrics, dict) else "unknown",
-        seed=metrics.get("seed", 0) if isinstance(metrics, dict) else 0,
+        status=facts.get("status", manifest.get("status", "unknown"))
+        if isinstance(facts, dict)
+        else "unknown",
+        mode=facts.get("mode", "unknown") if isinstance(facts, dict) else "unknown",
+        seed=facts.get("seed", 0) if isinstance(facts, dict) else 0,
         split_id=split_id,
         data_version=(
             manifest.get("data_version")
@@ -104,7 +108,7 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
             else None
         ),
         best_epoch=history.get("best_epoch") if isinstance(history, dict) else None,
-        sample_count=metrics.get("sample_count") if isinstance(metrics, dict) else None,
+        sample_count=facts.get("sample_count") if isinstance(facts, dict) else None,
         ade=metrics_values.get("ade") if isinstance(metrics_values, dict) else None,
         fde=metrics_values.get("fde") if isinstance(metrics_values, dict) else None,
         total_seconds=timing.get("total") if isinstance(timing, dict) else None,
