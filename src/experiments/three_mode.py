@@ -453,11 +453,17 @@ class FederatedExperiment:
                 for name, path in record.artifact_paths.items():
                     artifacts[f"round_{round_index:04d}_{result.client_id}_{name}"] = path
 
+            global_evaluations = (
+                _evaluate_global_round(request, execution.aggregation.state, execution.results)
+                if execution.aggregation is not None
+                else {}
+            )
             round_record = _round_record(
                 execution,
                 round_client_records,
                 input_state_id=input_state_id,
                 local_epochs=request.local_epochs,
+                global_evaluations=global_evaluations,
             )
             round_path = Path("rounds") / f"round_{round_index:04d}.json"
             _write_json(root / round_path, round_record.to_dict())
@@ -579,8 +585,12 @@ def validate_three_mode_matrix(
     if mismatches:
         raise ExperimentInputError(f"mode identity mismatch: {', '.join(sorted(mismatches))}")
     planned = {mode: _budget(value) for mode, value in planned_budgets.items()}
-    if any(value != planned["centralized"] for value in planned.values()):
-        raise ExperimentInputError("planned budgets differ across modes")
+    planned_visits = {value["sample_visits"] for value in planned.values()}
+    planned_clients = {mode: set(value["selected_clients"]) for mode, value in planned.items()}
+    if len(planned_visits) != 1 or any(
+        clients != planned_clients["centralized"] for clients in planned_clients.values()
+    ):
+        raise ExperimentInputError("planned sample visits or client coverage differ across modes")
     actual = (
         planned
         if actual_budgets is None
@@ -913,6 +923,7 @@ def _round_record(
     *,
     input_state_id: str,
     local_epochs: int,
+    global_evaluations: Mapping[str, Mapping[str, object]] | None = None,
 ) -> RoundRecord:
     updates = [item for item in execution.results if isinstance(item, ClientUpdate)]
     failures = sorted(
@@ -930,18 +941,16 @@ def _round_record(
     )
     total = sum(item.sample_count for item in updates)
     weights = {item.client_id: item.sample_count / total for item in updates} if total else {}
-    completed = [
-        records[item.client_id] for item in updates if records[item.client_id].status == "completed"
-    ]
-    evaluation_total = sum(item.evaluation_sample_count or 0 for item in completed)
+    evaluations = global_evaluations or {}
+    evaluation_total = sum(int(item["evaluation_sample_count"]) for item in evaluations.values())
 
     def weighted(name: str) -> float | None:
         if not evaluation_total:
             return None
         return (
             sum(
-                float(getattr(item.record, name)) * int(item.evaluation_sample_count or 0)
-                for item in completed
+                float(item[name]) * int(item["evaluation_sample_count"])
+                for item in evaluations.values()
             )
             / evaluation_total
         )
@@ -984,8 +993,8 @@ def _round_record(
         evaluation_sample_count=evaluation_total,
         evaluation_loss=(
             sum(
-                float(item.evaluation_loss) * int(item.evaluation_sample_count or 0)
-                for item in completed
+                float(item["evaluation_loss"]) * int(item["evaluation_sample_count"])
+                for item in evaluations.values()
             )
             / evaluation_total
             if evaluation_total
@@ -993,6 +1002,27 @@ def _round_record(
         ),
         total_seconds=execution.elapsed_seconds,
     )
+
+
+def _evaluate_global_round(
+    request: FederatedRunRequest,
+    global_state: ModelState,
+    results: Sequence[ClientUpdate | ClientFailure],
+) -> dict[str, Mapping[str, object]]:
+    evaluations: dict[str, Mapping[str, object]] = {}
+    for update in results:
+        if not isinstance(update, ClientUpdate):
+            continue
+        client_data = request.client_loaders.clients[update.client_id]
+        if client_data.profile.test_sample_count == 0:
+            continue
+        model = request.model_factory(request.model_config["model"])
+        load_isolated_state(model, global_state)
+        value = dict(request.evaluation_factory(update.client_id, model, client_data))
+        if value.get("evaluation_sample_count") != client_data.profile.test_sample_count:
+            raise ExperimentInputError("global evaluation count differs from frozen profile")
+        evaluations[update.client_id] = value
+    return evaluations
 
 
 def _open_run(
@@ -1195,6 +1225,20 @@ def _finalize(
     completed = [record for record in records.values() if record.status == "completed"]
     fairness = _fairness_record(identity, planned_budget, actual_budget)
     summary = summarize_client_results(completed)[1] if completed else None
+    if mode == "federated" and rounds and rounds[-1].status == "completed":
+        final_round = rounds[-1]
+        if final_round.ade is not None and final_round.fde is not None:
+            summary = ResultRecord(
+                run_id=f"{run_id}:global",
+                code_sha=completed[0].record.code_sha if completed else "unknown",
+                seed=int(identity["seed"]),
+                split_id=str(identity["split_id"]),
+                mode="federated",
+                sample_count=final_round.evaluation_sample_count,
+                ade=final_round.ade,
+                fde=final_round.fde,
+                total_seconds=sum(item.total_seconds for item in rounds),
+            )
     all_rounds_completed = all(item.status == "completed" for item in rounds)
     status: Literal["completed", "failed"] = (
         "completed"
