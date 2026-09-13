@@ -46,9 +46,11 @@ from src.federated.training_factory import (
     load_isolated_state,
 )
 from src.models.base import require_torch
+from src.utils.paths import validate_run_id
 
 MODE_MANIFEST_SCHEMA_VERSION = 2
 RESUME_SCHEMA_VERSION = 1
+RECOVERY_RELATIVE_PATH = Path("checkpoints/recovery.json")
 IdentityDict = dict[str, str | int]
 BudgetDict = dict[str, object]
 EvaluationFactory = Callable[[str, Any, ClientDataLoaders], Mapping[str, object]]
@@ -132,6 +134,59 @@ class ThreeModeMatrixResult:
     reason: str | None
 
 
+@dataclass(frozen=True)
+class ThreeModeRunRequest:
+    """Validated mode metadata plus injected production runner callables."""
+
+    identities: Mapping[str, ComparisonIdentity | Mapping[str, object]]
+    planned_budgets: Mapping[str, Mapping[str, object]]
+    runners: Mapping[str, Callable[[], object]]
+
+
+@dataclass(frozen=True)
+class ThreeModeRunResult:
+    status: Literal["completed", "failed"]
+    exit_code: int
+    mode_results: Mapping[str, object]
+    mode_errors: Mapping[str, str]
+    matrix: ThreeModeMatrixResult
+
+
+class ThreeModeExperiment:
+    """Run a prevalidated three-mode matrix while retaining independent outcomes."""
+
+    def run(self, request: ThreeModeRunRequest) -> ThreeModeRunResult:
+        preflight = validate_three_mode_matrix(request.identities, request.planned_budgets)
+        required_modes = ("centralized", "local_only", "federated")
+        if set(request.runners) != set(required_modes):
+            raise ExperimentInputError(
+                "runners must contain centralized, local_only, and federated"
+            )
+        results: dict[str, object] = {}
+        errors: dict[str, str] = {}
+        actual: dict[str, Mapping[str, object]] = {}
+        for mode in required_modes:
+            try:
+                result = request.runners[mode]()
+                results[mode] = result
+                actual[mode] = _result_actual_budget(result, mode)
+                result_exit_code = _result_exit_code(result)
+                if result_exit_code != 0:
+                    errors[mode] = f"mode returned exit code {result_exit_code}"
+            except Exception as exc:
+                errors[mode] = f"{type(exc).__name__}: {exc}"
+                actual[mode] = _zero_budget(request.planned_budgets[mode])
+        matrix = validate_three_mode_matrix(request.identities, request.planned_budgets, actual)
+        completed = preflight.exit_code == 0 and matrix.exit_code == 0 and not errors
+        return ThreeModeRunResult(
+            status="completed" if completed else "failed",
+            exit_code=0 if completed else 1,
+            mode_results=results,
+            mode_errors=errors,
+            matrix=matrix,
+        )
+
+
 class LocalOnlyExperiment:
     """Run every trainable client from the same state and commit per-client boundaries."""
 
@@ -151,7 +206,19 @@ class LocalOnlyExperiment:
             recovered.manifest, identity=prepared.identity, code_sha=request.code_sha
         )
         completed_ids = set(recovered.completed_client_ids)
-        failures: list[Mapping[str, object]] = list(recovered.terminal_failures)
+        retry_sample_visits = recovered.retry_sample_visits + sum(
+            record.sample_visits
+            for client_id, record in records.items()
+            if client_id not in completed_ids
+        )
+        for client_id in tuple(records):
+            if client_id not in completed_ids:
+                records.pop(client_id)
+        failures: list[Mapping[str, object]] = [
+            failure
+            for failure in recovered.terminal_failures
+            if failure.get("client_id") in completed_ids
+        ]
         artifacts = dict(recovered.artifacts)
         _restore_rng_state(root, recovered.recovery)
         _restore_loader_states(request.client_loaders, root, recovered.recovery)
@@ -160,6 +227,7 @@ class LocalOnlyExperiment:
             if client_id in completed_ids:
                 continue
             client_data = request.client_loaders.clients[client_id]
+            loader_state = _capture_client_loader_states(client_data)
             if client_data.is_empty_train:
                 record = _noncompleted_record(
                     request,
@@ -175,6 +243,7 @@ class LocalOnlyExperiment:
             if record.status != "failed":
                 completed_ids.add(client_id)
             elif record.status == "failed":
+                _restore_captured_loader_states(client_data, loader_state)
                 failures.append(_failure_fact(record, stage="local_train"))
             client_manifest = Path("clients") / client_id / "manifest.json"
             _write_json(root / client_manifest, record.to_dict())
@@ -182,25 +251,27 @@ class LocalOnlyExperiment:
             for name, path in record.artifact_paths.items():
                 artifacts[f"client_{client_id}_{name}"] = path
             actual = _local_actual_budget(records, request.local_epochs)
-            _commit_recovery(
-                root,
-                mode="local_only",
-                identity=prepared.identity,
-                initial_state=request.initial_state,
-                current_state=request.initial_state,
-                completed_client_ids=sorted(completed_ids),
-                completed_round_indices=[],
-                planned_budget=prepared.planned_budget,
-                actual_budget=actual,
-                records=records,
-                rounds=[],
-                artifacts=artifacts,
-                failures=failures,
-                selector_state={"type": "all_clients", "next_index": len(records)},
-                bundle=request.client_loaders,
-                resume_from=recovered.resume_from,
-            )
-            if request.boundary_callback is not None:
+            if record.status != "failed":
+                _commit_recovery(
+                    root,
+                    mode="local_only",
+                    identity=prepared.identity,
+                    initial_state=request.initial_state,
+                    current_state=request.initial_state,
+                    completed_client_ids=sorted(completed_ids),
+                    completed_round_indices=[],
+                    planned_budget=prepared.planned_budget,
+                    actual_budget=actual,
+                    records=records,
+                    rounds=[],
+                    artifacts=artifacts,
+                    failures=failures,
+                    selector_state={"type": "all_clients", "next_index": len(records)},
+                    bundle=request.client_loaders,
+                    resume_from=recovered.resume_from,
+                    retry_sample_visits=retry_sample_visits,
+                )
+            if request.boundary_callback is not None and record.status != "failed":
                 request.boundary_callback("client", len(records) - 1)
 
         actual = _local_actual_budget(records, request.local_epochs)
@@ -222,6 +293,8 @@ class LocalOnlyExperiment:
             selector_state={"type": "all_clients", "next_index": len(records)},
             bundle=request.client_loaders,
             resume_from=recovered.resume_from,
+            retry_sample_visits=retry_sample_visits,
+            preserve_recovery=any(record.status == "failed" for record in records.values()),
         )
 
     def resume(self, request: LocalOnlyRunRequest) -> ModeRunResult:
@@ -417,6 +490,7 @@ class FederatedExperiment:
                     },
                     bundle=request.client_loaders,
                     resume_from=recovered.resume_from,
+                    preserve_recovery=True,
                 )
             candidate_state = clone_model_state(execution.aggregation.state)
             state_path = Path("checkpoints") / f"global_round_{round_index:04d}.pt"
@@ -547,6 +621,7 @@ class _Recovered:
     terminal_failures: tuple[Mapping[str, object], ...]
     artifacts: Mapping[str, str]
     resume_from: str | None
+    retry_sample_visits: int
 
 
 class _RaisingClient:
@@ -626,8 +701,10 @@ def _validate_common(request: Any) -> IdentityDict:
     if identity != actual:
         differing = sorted(key for key in identity if identity[key] != actual[key])
         raise ExperimentInputError(f"experiment identity mismatch: {', '.join(differing)}")
-    if not request.run_id or not isinstance(request.run_id, str):
-        raise ExperimentInputError("run_id must be a non-empty string")
+    try:
+        validate_run_id(request.run_id)
+    except (TypeError, ValueError) as exc:
+        raise ExperimentInputError(f"invalid run_id: {exc}") from exc
     root = Path(request.output_dir)
     if request.resume_checkpoint is None and root.exists():
         raise ExperimentInputError("run output already exists")
@@ -937,9 +1014,10 @@ def _open_run(
         artifacts = {
             "config": "config_snapshot.json",
             "initial_state": "checkpoints/initial_state.pt",
-            "recovery": "recovery.json",
+            "recovery": RECOVERY_RELATIVE_PATH.as_posix(),
             "manifest": "manifest.json",
             "results_csv": "results.csv",
+            "recovery_manifest": "checkpoints/recovery_manifest_initial.json",
         }
         recovery = {
             "resume_schema_version": RESUME_SCHEMA_VERSION,
@@ -950,6 +1028,7 @@ def _open_run(
             "initial_state_id": identity["initial_state_id"],
             "current_state_id": identity["initial_state_id"],
             "current_state_path": "checkpoints/initial_state.pt",
+            "boundary_manifest_path": "checkpoints/recovery_manifest_initial.json",
             "selector_state": {},
             "rng_state_paths": {},
             "completed_client_ids": [],
@@ -960,10 +1039,25 @@ def _open_run(
             "artifact_paths": artifacts,
             "resume_from": None,
         }
+        initial_fairness = _fairness_record(identity, planned_budget, recovery["actual_budget"])
         manifest = _manifest_payload(
-            run_id, mode, "interrupted", None, identity, None, {}, [], None, artifacts
+            run_id,
+            mode,
+            "interrupted",
+            {
+                "code": "Interrupted",
+                "message": "run is resumable from the initial boundary",
+                "terminal_failures": [],
+            },
+            identity,
+            initial_fairness,
+            {},
+            [],
+            None,
+            artifacts,
         )
-        _write_json(root / "recovery.json", recovery)
+        _write_json(root / "checkpoints" / "recovery_manifest_initial.json", manifest)
+        _write_json(root / RECOVERY_RELATIVE_PATH, recovery)
         _write_json(root / "manifest.json", manifest)
         return root, _Recovered(
             manifest,
@@ -974,25 +1068,37 @@ def _open_run(
             (),
             artifacts,
             None,
+            0,
         )
 
     checkpoint = Path(resume_checkpoint)
     if not checkpoint.is_absolute():
         checkpoint = root / checkpoint
     checkpoint = checkpoint.resolve()
-    if not checkpoint.is_relative_to(root.resolve()) or checkpoint.name != "recovery.json":
-        raise ExperimentInputError("resume_checkpoint must be this run's recovery.json")
+    if checkpoint != (root / RECOVERY_RELATIVE_PATH).resolve():
+        raise ExperimentInputError("resume_checkpoint must be this run's checkpoints/recovery.json")
     recovery = _read_json(checkpoint, "recovery checkpoint")
-    manifest = _read_json(root / "manifest.json", "run manifest")
-    if manifest.get("status") == "completed":
+    public_manifest = _read_json(root / "manifest.json", "run manifest")
+    if public_manifest.get("status") == "completed":
         raise ExperimentInputError("completed runs cannot be resumed or overwritten")
-    if manifest.get("status") not in ("failed", "interrupted"):
+    if public_manifest.get("status") not in ("failed", "interrupted"):
         raise ExperimentInputError("resume requires a failed or interrupted run")
     if recovery.get("resume_schema_version") != RESUME_SCHEMA_VERSION:
         raise ExperimentInputError("unsupported or damaged recovery schema")
     if recovery.get("mode") != mode or recovery.get("run_id") != run_id:
         raise ExperimentInputError("recovery mode/run_id does not match request")
-    if recovery.get("identity") != identity or manifest.get("identity") != identity:
+    boundary_relative = recovery.get("boundary_manifest_path")
+    if not isinstance(boundary_relative, str):
+        raise ExperimentInputError("recovery boundary manifest path is missing")
+    boundary_path = (root / boundary_relative).resolve()
+    if not boundary_path.is_relative_to(root.resolve()):
+        raise ExperimentInputError("recovery boundary manifest escapes run directory")
+    manifest = _read_json(boundary_path, "recovery boundary manifest")
+    if (
+        recovery.get("identity") != identity
+        or public_manifest.get("identity") != identity
+        or manifest.get("identity") != identity
+    ):
         raise ExperimentInputError("recovery identity does not match request")
     if recovery.get("config_digest") != _snapshot_digest(config_snapshot):
         raise ExperimentInputError("recovery config snapshot does not match request")
@@ -1019,6 +1125,31 @@ def _open_run(
         not isinstance(k, str) or not isinstance(v, str) for k, v in artifacts.items()
     ):
         raise ExperimentInputError("recovery artifact index is damaged")
+    _validate_recovery_artifacts(root, artifacts)
+    manifest_clients = manifest.get("clients")
+    if not isinstance(manifest_clients, list):
+        raise ExperimentInputError("recovery boundary clients are damaged")
+    boundary_client_ids = {
+        item.get("client_id")
+        for item in manifest_clients
+        if isinstance(item, Mapping)
+        and (
+            item.get("status") == "completed"
+            or (mode == "local_only" and item.get("status") == "skipped")
+        )
+    }
+    if set(completed_clients) != boundary_client_ids:
+        raise ExperimentInputError("completed clients do not match the recovery boundary")
+    manifest_rounds = manifest.get("rounds")
+    if not isinstance(manifest_rounds, list):
+        raise ExperimentInputError("recovery boundary rounds are damaged")
+    boundary_round_indices = [
+        item.get("round_index")
+        for item in manifest_rounds
+        if isinstance(item, Mapping) and item.get("status") == "completed"
+    ]
+    if completed_rounds != boundary_round_indices:
+        raise ExperimentInputError("completed rounds do not match the recovery boundary")
     failures = (
         manifest.get("error", {}).get("terminal_failures", [])
         if isinstance(manifest.get("error"), Mapping)
@@ -1035,6 +1166,7 @@ def _open_run(
         tuple(item for item in failures if isinstance(item, Mapping)),
         {str(k): str(v) for k, v in artifacts.items()},
         checkpoint.relative_to(root).as_posix(),
+        _non_negative_recovery_int(recovery.get("retry_sample_visits"), "retry_sample_visits"),
     )
 
 
@@ -1057,15 +1189,11 @@ def _finalize(
     selector_state: Mapping[str, object],
     bundle: ClientDataBundle,
     resume_from: str | None,
+    retry_sample_visits: int = 0,
+    preserve_recovery: bool = False,
 ) -> ModeRunResult:
     completed = [record for record in records.values() if record.status == "completed"]
-    fairness = FairnessRecord(
-        **identity,
-        planned_budget=planned_budget,
-        actual_budget=actual_budget,
-        comparable=planned_budget == actual_budget,
-        reason=None if planned_budget == actual_budget else "planned_budget != actual_budget",
-    )
+    fairness = _fairness_record(identity, planned_budget, actual_budget)
     summary = summarize_client_results(completed)[1] if completed else None
     all_rounds_completed = all(item.status == "completed" for item in rounds)
     status: Literal["completed", "failed"] = (
@@ -1085,28 +1213,56 @@ def _finalize(
     )
     artifact_index = dict(artifacts)
     _write_results_csv(root / "results.csv", records.values())
-    _commit_recovery(
-        root,
-        mode=mode,
-        identity=identity,
-        initial_state=initial_state,
-        current_state=current_state,
-        completed_client_ids=completed_client_ids,
-        completed_round_indices=completed_round_indices,
-        planned_budget=planned_budget,
-        actual_budget=actual_budget,
-        records=records,
-        rounds=rounds,
-        artifacts=artifact_index,
-        failures=failures,
-        selector_state=selector_state,
-        bundle=bundle,
-        resume_from=resume_from,
-        status=status,
-        fairness=fairness,
-        summary=summary,
-        error=error,
-    )
+    if preserve_recovery:
+        recovery = _read_json(root / RECOVERY_RELATIVE_PATH, "recovery checkpoint")
+        recovery_artifacts = recovery.get("artifact_paths")
+        if isinstance(recovery_artifacts, Mapping):
+            artifact_index.update(
+                {
+                    str(name): str(path)
+                    for name, path in recovery_artifacts.items()
+                    if isinstance(name, str) and isinstance(path, str)
+                }
+            )
+        _write_json(
+            root / "manifest.json",
+            _manifest_payload(
+                run_id,
+                mode,
+                status,
+                error,
+                identity,
+                fairness,
+                records,
+                rounds,
+                summary,
+                artifact_index,
+            ),
+        )
+    else:
+        _commit_recovery(
+            root,
+            mode=mode,
+            identity=identity,
+            initial_state=initial_state,
+            current_state=current_state,
+            completed_client_ids=completed_client_ids,
+            completed_round_indices=completed_round_indices,
+            planned_budget=planned_budget,
+            actual_budget=actual_budget,
+            records=records,
+            rounds=rounds,
+            artifacts=artifact_index,
+            failures=failures,
+            selector_state=selector_state,
+            bundle=bundle,
+            resume_from=resume_from,
+            status=status,
+            fairness=fairness,
+            summary=summary,
+            error=error,
+            retry_sample_visits=retry_sample_visits,
+        )
     return ModeRunResult(
         run_id=run_id,
         mode=mode,
@@ -1121,7 +1277,7 @@ def _finalize(
         summary=summary,
         output_dir=root,
         manifest_path=root / "manifest.json",
-        recovery_path=root / "recovery.json",
+        recovery_path=root / RECOVERY_RELATIVE_PATH,
         terminal_failures=tuple(failures),
     )
 
@@ -1148,13 +1304,20 @@ def _commit_recovery(
     fairness: FairnessRecord | None = None,
     summary: ResultRecord | None = None,
     error: Mapping[str, object] | None = None,
+    retry_sample_visits: int = 0,
 ) -> None:
-    state_path = "checkpoints/current_state.pt"
+    boundary_number = (
+        len(completed_round_indices) if mode == "federated" else len(completed_client_ids)
+    )
+    boundary_token = f"{mode}_{boundary_number:04d}"
+    state_path = f"checkpoints/recovery_state_{boundary_token}.pt"
+    boundary_manifest_path = f"checkpoints/recovery_manifest_{boundary_token}.json"
     _write_state(root / state_path, current_state)
-    rng_paths = _save_rng_state(root)
-    loader_paths = _save_loader_states(bundle, root)
+    rng_paths = _save_rng_state(root, boundary_token)
+    loader_paths = _save_loader_states(bundle, root, boundary_token)
     artifact_index = dict(artifacts)
     artifact_index["current_state"] = state_path
+    artifact_index["recovery_manifest"] = boundary_manifest_path
     artifact_index.update(rng_paths)
     artifact_index.update(loader_paths)
     recovery = {
@@ -1170,16 +1333,19 @@ def _commit_recovery(
         "initial_state_id": model_state_id(initial_state),
         "current_state_id": model_state_id(current_state),
         "current_state_path": state_path,
+        "boundary_manifest_path": boundary_manifest_path,
         "selector_state": dict(selector_state),
         "rng_state_paths": {**rng_paths, **loader_paths},
         "completed_client_ids": list(completed_client_ids),
         "completed_round_indices": list(completed_round_indices),
         "planned_budget": planned_budget,
         "actual_budget": actual_budget,
-        "retry_sample_visits": 0,
+        "retry_sample_visits": retry_sample_visits,
         "artifact_paths": dict(sorted(artifact_index.items())),
         "resume_from": resume_from,
     }
+    if fairness is None:
+        fairness = _fairness_record(identity, planned_budget, actual_budget)
     manifest_error = error
     if manifest_error is None and status == "interrupted":
         manifest_error = {
@@ -1199,7 +1365,8 @@ def _commit_recovery(
         summary,
         artifact_index,
     )
-    _write_json(root / "recovery.json", recovery)
+    _write_json(root / boundary_manifest_path, manifest)
+    _write_json(root / RECOVERY_RELATIVE_PATH, recovery)
     _write_json(root / "manifest.json", manifest)
 
 
@@ -1375,6 +1542,43 @@ def _zero_budget(planned: Mapping[str, object]) -> BudgetDict:
     }
 
 
+def _result_actual_budget(result: object, mode: str) -> Mapping[str, object]:
+    value = (
+        result.get("actual_budget")
+        if isinstance(result, Mapping)
+        else getattr(result, "actual_budget", None)
+    )
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{mode} result does not expose actual_budget")
+    return _budget(value)
+
+
+def _result_exit_code(result: object) -> int:
+    value = (
+        result.get("exit_code", 0)
+        if isinstance(result, Mapping)
+        else getattr(result, "exit_code", 0)
+    )
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("mode result exit_code must be an integer")
+    return value
+
+
+def _fairness_record(
+    identity: Mapping[str, str | int],
+    planned_budget: Mapping[str, object],
+    actual_budget: Mapping[str, object],
+) -> FairnessRecord:
+    comparable = planned_budget == actual_budget
+    return FairnessRecord(
+        **dict(identity),
+        planned_budget=planned_budget,
+        actual_budget=actual_budget,
+        comparable=comparable,
+        reason=None if comparable else "planned_budget != actual_budget",
+    )
+
+
 def _failure_fact(
     record: ClientResultRecord, *, stage: str, round_index: int = 0
 ) -> dict[str, object]:
@@ -1387,10 +1591,10 @@ def _failure_fact(
     }
 
 
-def _save_rng_state(root: Path) -> dict[str, str]:
+def _save_rng_state(root: Path, boundary_token: str) -> dict[str, str]:
     torch = require_torch()
-    random_path = Path("checkpoints") / "rng.json"
-    torch_path = Path("checkpoints") / "torch_rng.pt"
+    random_path = Path("checkpoints") / f"rng_{boundary_token}.json"
+    torch_path = Path("checkpoints") / f"torch_rng_{boundary_token}.pt"
     numpy_state = np.random.get_state()
     _write_json(
         root / random_path,
@@ -1436,7 +1640,9 @@ def _restore_rng_state(root: Path, recovery: Mapping[str, object]) -> None:
     require_torch().set_rng_state(torch_state["cpu_rng_state"])
 
 
-def _save_loader_states(bundle: ClientDataBundle, root: Path) -> dict[str, str]:
+def _save_loader_states(
+    bundle: ClientDataBundle, root: Path, boundary_token: str
+) -> dict[str, str]:
     states: dict[str, Any] = {}
     for client_id, client in bundle.clients.items():
         for split, loader in client.loaders.items():
@@ -1445,9 +1651,26 @@ def _save_loader_states(bundle: ClientDataBundle, root: Path) -> dict[str, str]:
                 states[f"{client_id}:{split}"] = generator.get_state()
     if not states:
         return {}
-    path = Path("checkpoints") / "loader_rng.pt"
+    path = Path("checkpoints") / f"loader_rng_{boundary_token}.pt"
     _write_state(root / path, states)
     return {"loader_rng": path.as_posix()}
+
+
+def _capture_client_loader_states(client: ClientDataLoaders) -> dict[str, Any]:
+    states: dict[str, Any] = {}
+    for split, loader in client.loaders.items():
+        generator = getattr(loader, "generator", None)
+        if generator is not None:
+            states[split] = generator.get_state().clone()
+    return states
+
+
+def _restore_captured_loader_states(client: ClientDataLoaders, states: Mapping[str, Any]) -> None:
+    for split, state in states.items():
+        generator = getattr(client.loaders[split], "generator", None)
+        if generator is None:
+            raise ExperimentInputError("client loader lost its RNG generator")
+        generator.set_state(state)
 
 
 def _restore_loader_states(
@@ -1513,6 +1736,19 @@ def _read_json(path: Path, name: str) -> dict[str, object]:
     return value
 
 
+def _validate_recovery_artifacts(root: Path, artifacts: Mapping[object, object]) -> None:
+    optional_while_running = {"manifest", "results_csv"}
+    for name, relative in artifacts.items():
+        candidate = Path(str(relative))
+        if candidate.is_absolute():
+            raise ExperimentInputError("recovery artifact path must be relative")
+        resolved = (root / candidate).resolve()
+        if not resolved.is_relative_to(root.resolve()):
+            raise ExperimentInputError("recovery artifact path escapes run directory")
+        if name not in optional_while_running and not resolved.is_file():
+            raise ExperimentInputError(f"recovery artifact is missing: {relative}")
+
+
 def _write_results_csv(path: Path, records: Sequence[ClientResultRecord] | Any) -> None:
     rows = [record.to_dict() for record in sorted(records, key=lambda item: item.client_id)]
     fields = [
@@ -1576,6 +1812,12 @@ def _string_tuple(value: object, name: str) -> tuple[str, ...]:
     if len(set(value)) != len(value):
         raise ExperimentInputError(f"{name} contains duplicates")
     return tuple(value)
+
+
+def _non_negative_recovery_int(value: object, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ExperimentInputError(f"{name} is damaged")
+    return value
 
 
 def _optional_float(value: object) -> float | None:

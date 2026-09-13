@@ -197,7 +197,7 @@ class ComparisonIdentity:
     model_config_digest: str
     initial_state_id: str
     metric_schema: str
-    budget_id: str
+    budget_id: str = "legacy"
     data_version: str = "legacy"
     split_id: str = "legacy"
     seed: int = 0

@@ -22,6 +22,8 @@ from src.experiments.three_mode import (
     FederatedRunRequest,
     LocalOnlyExperiment,
     LocalOnlyRunRequest,
+    ThreeModeExperiment,
+    ThreeModeRunRequest,
     stable_config_digest,
     validate_three_mode_matrix,
 )
@@ -216,7 +218,7 @@ def test_round_boundary_resume_matches_uninterrupted_run(tmp_path: Path) -> None
         )
     resume_request = replace(
         _federated_request(interrupted_root, rounds=2),
-        resume_checkpoint="recovery.json",
+        resume_checkpoint="checkpoints/recovery.json",
     )
     resumed = FederatedExperiment().resume(resume_request)
     assert resumed.status == "completed"
@@ -256,7 +258,7 @@ def test_local_client_boundary_resume_matches_uninterrupted_run(tmp_path: Path) 
     resumed = LocalOnlyExperiment().resume(
         replace(
             _local_request(interrupted_root),
-            resume_checkpoint="recovery.json",
+            resume_checkpoint="checkpoints/recovery.json",
         )
     )
     assert resumed.status == "completed"
@@ -322,6 +324,61 @@ def test_partial_all_failure_and_empty_clients_remain_structured(tmp_path: Path)
     assert {item.status for item in empty_result.client_records} == {"skipped"}
 
 
+def test_failed_client_and_failed_round_resume_from_last_complete_boundary(
+    tmp_path: Path,
+) -> None:
+    local_root = tmp_path / "retry-client"
+
+    def fail_first_evaluation(client_id, model, client_data):
+        if client_id == "rsu_01":
+            raise RuntimeError("evaluation failed after training")
+        return _evaluate(client_id, model, client_data)
+
+    failed_local = LocalOnlyExperiment().run(
+        replace(_local_request(local_root), evaluation_factory=fail_first_evaluation)
+    )
+    assert failed_local.status == "failed"
+    resumed_local = LocalOnlyExperiment().resume(
+        replace(_local_request(local_root), resume_checkpoint="checkpoints/recovery.json")
+    )
+    assert resumed_local.status == "completed"
+    local_recovery = json.loads(resumed_local.recovery_path.read_text())
+    assert local_recovery["retry_sample_visits"] == 2
+
+    fed_root = tmp_path / "retry-round"
+
+    def fail_all(client_id, **kwargs):
+        del client_id, kwargs
+        raise RuntimeError("round client failure")
+
+    failed_fed = FederatedExperiment().run(
+        replace(_federated_request(fed_root), trainer_factory=fail_all)
+    )
+    assert failed_fed.status == "failed"
+    assert failed_fed.round_records[0].status == "failed"
+    recovery_before = json.loads(failed_fed.recovery_path.read_text())
+    assert recovery_before["completed_round_indices"] == []
+    resumed_fed = FederatedExperiment().resume(
+        replace(_federated_request(fed_root), resume_checkpoint="checkpoints/recovery.json")
+    )
+    assert resumed_fed.status == "completed"
+    assert resumed_fed.completed_round_indices == (0,)
+
+
+def test_interrupted_manifest_always_contains_fairness_record(tmp_path: Path) -> None:
+    root = tmp_path / "fairness-interrupted"
+
+    def interrupt(*_):
+        raise RuntimeError("stop")
+
+    with pytest.raises(RuntimeError, match="stop"):
+        LocalOnlyExperiment().run(replace(_local_request(root), boundary_callback=interrupt))
+    manifest = json.loads((root / "manifest.json").read_text())
+    assert manifest["status"] == "interrupted"
+    assert manifest["fairness"]["comparable"] is False
+    assert manifest["fairness"]["planned_budget"]["sample_visits"] == 4
+
+
 def test_identity_budget_bad_checkpoint_and_completed_overwrite_exit_two(tmp_path: Path) -> None:
     bad_identity = _local_request(tmp_path / "bad-identity")
     bad_identity = replace(bad_identity, identity={**bad_identity.identity, "split_id": "wrong"})
@@ -348,17 +405,24 @@ def test_identity_budget_bad_checkpoint_and_completed_overwrite_exit_two(tmp_pat
     with pytest.raises(ExperimentInputError, match="already exists"):
         LocalOnlyExperiment().run(complete_request)
     with pytest.raises(ExperimentInputError, match="completed runs"):
-        LocalOnlyExperiment().resume(replace(complete_request, resume_checkpoint="recovery.json"))
+        LocalOnlyExperiment().resume(
+            replace(complete_request, resume_checkpoint="checkpoints/recovery.json")
+        )
 
     interrupted = _federated_request(
         tmp_path / "broken", rounds=2, callback=lambda *_: (_ for _ in ()).throw(RuntimeError("x"))
     )
     with pytest.raises(RuntimeError):
         FederatedExperiment().run(interrupted)
-    (Path(interrupted.output_dir) / "checkpoints/current_state.pt").write_bytes(b"bad")
+    recovery = json.loads((Path(interrupted.output_dir) / "checkpoints/recovery.json").read_text())
+    (Path(interrupted.output_dir) / recovery["current_state_path"]).write_bytes(b"bad")
     with pytest.raises(ExperimentInputError, match="cannot load state checkpoint"):
         FederatedExperiment().resume(
-            replace(interrupted, resume_checkpoint="recovery.json", boundary_callback=None)
+            replace(
+                interrupted,
+                resume_checkpoint="checkpoints/recovery.json",
+                boundary_callback=None,
+            )
         )
 
 
@@ -384,3 +448,40 @@ def test_three_mode_matrix_rejects_each_identity_and_budget_field() -> None:
         changed["federated"][field] = ["rsu_01"] if field == "selected_clients" else 2
         with pytest.raises(ExperimentInputError, match="planned budgets"):
             validate_three_mode_matrix(identities, changed)
+
+
+def test_three_mode_runner_retains_successes_and_reports_actual_budget_mismatch() -> None:
+    identity = _identity(_initial_state())
+    budget = {
+        "sample_visits": 4,
+        "local_epochs": 1,
+        "rounds": 1,
+        "selected_clients": ["rsu_01", "rsu_02"],
+    }
+    identities = {mode: dict(identity) for mode in ("centralized", "local_only", "federated")}
+    budgets = {mode: dict(budget) for mode in identities}
+
+    def success():
+        return {"exit_code": 0, "actual_budget": dict(budget)}
+
+    def short_run():
+        return {
+            "exit_code": 1,
+            "actual_budget": {**budget, "sample_visits": 2},
+        }
+
+    result = ThreeModeExperiment().run(
+        ThreeModeRunRequest(
+            identities=identities,
+            planned_budgets=budgets,
+            runners={
+                "centralized": success,
+                "local_only": success,
+                "federated": short_run,
+            },
+        )
+    )
+    assert result.status == "failed" and result.exit_code == 1
+    assert set(result.mode_results) == {"centralized", "local_only", "federated"}
+    assert result.matrix.fairness["centralized"].comparable is True
+    assert result.matrix.fairness["federated"].comparable is False
