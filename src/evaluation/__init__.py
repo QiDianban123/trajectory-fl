@@ -19,6 +19,13 @@ from src.evaluation.data_diagnostics import (
     plot_raw_cleaned_trajectories,
     plot_truth_trajectory,
 )
+from src.evaluation.federated_results import (
+    ClientResultRecord,
+    RoundRecord,
+    compare_modes,
+    plot_round_metrics,
+    summarize_client_results,
+)
 from src.evaluation.metrics import ade, compute_metrics, fde
 from src.evaluation.prediction import PredictionCollection, collect_predictions
 from src.evaluation.result_store import ResultRecord, ResultStore, write_csv, write_json
@@ -39,6 +46,8 @@ __all__ = [
     "PhysicalTrajectoryBatch",
     "PredictionCollection",
     "ResultRecord",
+    "ClientResultRecord",
+    "RoundRecord",
     "ResultStore",
     "ade",
     "compute_metrics",
@@ -60,4 +69,7 @@ __all__ = [
     "plot_truth_trajectory",
     "write_csv",
     "write_json",
+    "compare_modes",
+    "plot_round_metrics",
+    "summarize_client_results",
 ]
