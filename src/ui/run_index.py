@@ -88,17 +88,16 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
                 resolved = resolver.resolve(relative_path)
                 if resolved is not None:
                     artifact_paths[name] = resolved
-    facts = summary if manifest.get("schema_version") == 2 and summary else metrics
-    metrics_values = facts.get("metrics", {}) if isinstance(facts, dict) else {}
-    timing = facts.get("timing_seconds", {}) if isinstance(facts, dict) else {}
+    candidate_facts = summary if manifest.get("schema_version") == 2 and summary else metrics
+    facts: dict[str, object] = candidate_facts if isinstance(candidate_facts, dict) else {}
+    metrics_values = facts.get("metrics", {})
+    timing = facts.get("timing_seconds", {})
     return RunSummary(
         run_dir=run_dir,
         run_id=run_id,
-        status=facts.get("status", manifest.get("status", "unknown"))
-        if isinstance(facts, dict)
-        else "unknown",
-        mode=facts.get("mode", "unknown") if isinstance(facts, dict) else "unknown",
-        seed=facts.get("seed", 0) if isinstance(facts, dict) else 0,
+        status=facts.get("status", manifest.get("status", "unknown")),
+        mode=facts.get("mode", "unknown"),
+        seed=facts.get("seed", 0),
         split_id=split_id,
         data_version=(
             manifest.get("data_version")
@@ -108,13 +107,10 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
             else None
         ),
         best_epoch=history.get("best_epoch") if isinstance(history, dict) else None,
-        sample_count=facts.get("sample_count") if isinstance(facts, dict) else None,
-        ade=(metrics_values.get("ade") if isinstance(metrics_values, dict) else None)
-        or facts.get("ade"),
-        fde=(metrics_values.get("fde") if isinstance(metrics_values, dict) else None)
-        or facts.get("fde"),
-        total_seconds=(timing.get("total") if isinstance(timing, dict) else None)
-        or facts.get("total_seconds"),
+        sample_count=_integer(facts.get("sample_count")),
+        ade=_metric_number(metrics_values, "ade", facts),
+        fde=_metric_number(metrics_values, "fde", facts),
+        total_seconds=_metric_number(timing, "total", facts, fallback="total_seconds"),
         artifacts=artifact_paths,
         fairness=manifest.get("fairness") if isinstance(manifest.get("fairness"), dict) else None,
         clients=tuple(item for item in manifest.get("clients", []) if isinstance(item, dict)),
@@ -128,3 +124,18 @@ def _read_json(path: Path) -> dict[str, object] | None:
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     return value if isinstance(value, dict) else None
+
+
+def _number(value: object) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _integer(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _metric_number(
+    nested: object, key: str, facts: dict[str, object], *, fallback: str | None = None
+) -> float | None:
+    value = nested.get(key) if isinstance(nested, dict) else None
+    return _number(value if value is not None else facts.get(fallback or key))

@@ -107,3 +107,23 @@ def test_v2_summary_overrides_intermediate_metrics_file(tmp_path: Path) -> None:
     (run_dir / "metrics.json").write_text('{"status":"failed"}', encoding="utf-8")
     run = discover_runs(tmp_path)[0]
     assert (run.status, run.ade, run.fde, run.total_seconds) == ("completed", 2.0, 3.0, 4.0)
+
+
+def test_incomplete_manifest_stays_visible_without_result_facts(tmp_path: Path) -> None:
+    run_dir = tmp_path / "outputs" / "interrupted"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "run_id": "interrupted",
+                "status": "interrupted",
+                "identity": {"split_id": "split"},
+                "summary": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    run = discover_runs(tmp_path)[0]
+    assert run.status == "interrupted"
+    assert (run.ade, run.fde, run.total_seconds, run.sample_count) == (None, None, None, None)
