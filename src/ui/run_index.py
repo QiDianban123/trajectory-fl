@@ -109,9 +109,12 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
         ),
         best_epoch=history.get("best_epoch") if isinstance(history, dict) else None,
         sample_count=facts.get("sample_count") if isinstance(facts, dict) else None,
-        ade=metrics_values.get("ade") if isinstance(metrics_values, dict) else None,
-        fde=metrics_values.get("fde") if isinstance(metrics_values, dict) else None,
-        total_seconds=timing.get("total") if isinstance(timing, dict) else None,
+        ade=(metrics_values.get("ade") if isinstance(metrics_values, dict) else None)
+        or facts.get("ade"),
+        fde=(metrics_values.get("fde") if isinstance(metrics_values, dict) else None)
+        or facts.get("fde"),
+        total_seconds=(timing.get("total") if isinstance(timing, dict) else None)
+        or facts.get("total_seconds"),
         artifacts=artifact_paths,
         fairness=manifest.get("fairness") if isinstance(manifest.get("fairness"), dict) else None,
         clients=tuple(item for item in manifest.get("clients", []) if isinstance(item, dict)),

@@ -149,6 +149,21 @@ def _runs_and_results() -> None:
     if not runs:
         st.info("尚未发现可展示的集中式运行。")
         return
+    modes = st.multiselect(
+        "模式筛选",
+        ("centralized", "local_only", "federated"),
+        default=("centralized", "local_only", "federated"),
+    )
+    statuses = st.multiselect(
+        "状态筛选",
+        ("completed", "failed", "interrupted"),
+        default=("completed", "failed", "interrupted"),
+    )
+    runs = [item for item in runs if item.mode in modes and item.status in statuses]
+    if not runs:
+        st.info("当前筛选没有运行；失败和中断运行仍保留在结构化索引中。")
+        return
+    _show_comparison(runs)
     labels = [f"{run.run_id} · {run.status} · {run.mode}" for run in runs]
     selected = runs[labels.index(st.selectbox("选择运行", labels))]
     _show_metrics(selected)
@@ -170,8 +185,12 @@ def _show_metrics(run: RunSummary) -> None:
     if run.fairness is not None:
         st.json(run.fairness, expanded=False)
     if run.clients:
+        st.caption("客户端画像与指标来源：schema v2 manifest.clients；空/失败客户端保留原因。")
         st.dataframe(list(run.clients), use_container_width=True)
     if run.rounds:
+        st.caption(
+            "联邦时间线来源：schema v2 manifest.rounds；权重、global state 与失败不重新计算。"
+        )
         st.dataframe(list(run.rounds), use_container_width=True)
     figure = run.run_dir / "figures" / "loss_curve.png"
     trajectory = run.run_dir / "figures" / "prediction_trajectory.png"
@@ -214,6 +233,31 @@ def _processed_options() -> list[str]:
 
 def _format_number(value: float | None, unit: str) -> str:
     return "—" if value is None else f"{value:.4f} {unit}"
+
+
+def _show_comparison(runs: list[RunSummary]) -> None:
+    st.subheader("三模式结果表与比较")
+    rows = [
+        {
+            "run_id": item.run_id,
+            "mode": item.mode,
+            "status": item.status,
+            "ADE (m)": item.ade,
+            "FDE (m)": item.fde,
+            "elapsed (s)": item.total_seconds,
+            "split_id": item.split_id,
+            "seed": item.seed,
+        }
+        for item in runs
+    ]
+    st.dataframe(rows, use_container_width=True)
+    complete = [row for row in rows if row["status"] == "completed" and row["ADE (m)"] is not None]
+    if complete:
+        st.bar_chart(
+            {row["mode"]: row["ADE (m)"] for row in complete}, x_label="mode", y_label="ADE (m)"
+        )
+    else:
+        st.info("没有可比较的完成记录；失败记录仍在上表显示。")
 
 
 def _show_fairness(preflight) -> None:

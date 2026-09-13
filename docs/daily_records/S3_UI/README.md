@@ -25,3 +25,9 @@
 - `pytest tests/unit/test_ui_capabilities.py tests/unit/test_ui_command_runner.py tests/unit/test_ui_run_index.py -q`：退出 0，7 passed。
 - `pytest tests/system/test_ui_smoke.py -q`：退出 0，1 passed。
 - AI 基础评审：待候选 SHA 后执行；真人审批/MR/远端 CI：待 UI 分支提交后进行。下游 UI-2 应消费同一结构化对象，不解析日志或复制算法。
+
+## UI-2 可操作结果视图
+
+- 修复 S3 v2 `summary` 使用 ResultRecord 内联 `ade`/`fde`/`total_seconds` 时的展示空值；旧 S2 `metrics.json` 格式保持兼容。
+- 页面提供 mode/status 筛选、三模式结果表、ADE（m）比较图、客户端画像、联邦轮次/权重/global-state/失败表及安全 artifact 浏览。所有数值直接来自 manifest/ResultRecord。
+- 浏览器真实操作：选择“三模式 smoke”并点击执行；run_id `eadbe9acf73b`，退出 0，三模式 manifest 均可从页面索引读取。刷新只读取 session/result index，不调用命令。
