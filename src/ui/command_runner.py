@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
+from typing import Literal
 
 from src.ui.capabilities import CommandSpec, UiCommandError
 
@@ -20,10 +21,20 @@ class CommandResult:
     exit_code: int
     started_at: str
     finished_at: str
+    state: Literal["succeeded", "failed", "cancelled", "timed_out"] = "succeeded"
 
     @property
     def succeeded(self) -> bool:
-        return self.exit_code == 0
+        return self.state == "succeeded" and self.exit_code == 0
+
+
+@dataclass(frozen=True)
+class UiRunState:
+    """Session-persisted UI lifecycle; refresh reads this state and never reruns a command."""
+
+    run_id: str | None
+    status: Literal["idle", "running", "succeeded", "failed", "cancelled", "timed_out"]
+    result: CommandResult | None = None
 
 
 class CommandRunner:
@@ -56,6 +67,7 @@ class CommandRunner:
                 exit_code=completed.returncode,
                 started_at=started_at,
                 finished_at=datetime.now(timezone.utc).isoformat(),
+                state="succeeded" if completed.returncode == 0 else "failed",
             )
         except subprocess.TimeoutExpired as exc:
             output = (exc.stdout or "") + (exc.stderr or "")
@@ -65,6 +77,7 @@ class CommandRunner:
                 exit_code=124,
                 started_at=started_at,
                 finished_at=datetime.now(timezone.utc).isoformat(),
+                state="timed_out",
             )
         finally:
             self._release(spec)

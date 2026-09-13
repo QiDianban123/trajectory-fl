@@ -162,3 +162,15 @@ Local-only/Federated 从失败或中断边界恢复时，复用原 `run-id` 并�
 `--resume-checkpoint checkpoints/recovery.json`。配置、processed 数据、输出和恢复路径均受仓库
 白名单限制；模式失败返回非零并保留 manifest。当前 UI 仍只开放 Centralized；可用命令清单为
 `status`、`validate-config`、`prepare-data`、上述三个 `train` 模式及无参数三模式 smoke。
+
+## S3 三模式控制台（UI-1 候选）
+
+保持既有 Streamlit 启动入口：
+
+```powershell
+python scripts\run_ui.py
+```
+
+控制台使用白名单参数数组开放 Centralized、Local-only、Federated、三模式 smoke 和失败运行恢复。
+页面先显示 S3 配置公平性预检，生产 runner 会再次校验；结果、RSU、轮次和 artifact 仅从保存的
+manifest/JSON/CSV 读取。UI-1 不包含三模式比较图或发布功能。
