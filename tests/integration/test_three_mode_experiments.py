@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -185,6 +186,15 @@ def test_real_two_client_local_and_one_federated_round(tmp_path: Path) -> None:
     assert manifest["schema_version"] == 2
     assert manifest["rounds"][0]["input_global_state_id"] == model_state_id(_initial_state())
     assert Path(federated.output_dir / manifest["artifacts"]["results_csv"]).is_file()
+    with (federated.output_dir / manifest["artifacts"]["results_csv"]).open(
+        encoding="utf-8", newline=""
+    ) as stream:
+        rows = list(csv.DictReader(stream))
+    completed = [item for item in manifest["clients"] if item["status"] == "completed"]
+    assert [row["client_id"] for row in rows] == [item["client_id"] for item in completed]
+    assert [int(row["sample_visits"]) for row in rows] == [
+        item["sample_visits"] for item in completed
+    ]
 
 
 def test_client_order_does_not_change_results_or_global_hash(tmp_path: Path) -> None:
