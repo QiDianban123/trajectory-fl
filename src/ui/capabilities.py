@@ -53,7 +53,7 @@ class CapabilityRegistry:
             Capability("federated_train", "Federated", True, "生产三模式入口"),
             Capability("three_mode_smoke", "三模式 smoke", True, "共享数据、初态与公平性 guard"),
             Capability("resume", "恢复失败运行", True, "仅正式 recovery.json 边界"),
-            Capability("compare", "三模式比较", False, "S3 UI-2 只读比较视图尚未交付"),
+            Capability("compare", "三模式比较", True, "只读比较已保存的可比较结构化运行"),
         )
 
 

@@ -106,6 +106,7 @@ def test_s3_capabilities_and_preflight_reject_inconsistent_config(tmp_path: Path
         "federated_train",
         "resume",
     }
+    assert {item.key: item.enabled for item in s3_capabilities()}["compare"] is True
     assert preflight_s3_fairness(
         root, mode="federated", experiment_config="configs/experiments/s3_federated_smoke.yaml"
     ).allowed

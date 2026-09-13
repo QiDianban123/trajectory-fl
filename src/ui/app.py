@@ -76,6 +76,9 @@ def _build_command(action: str):
         return build_smoke_command(PROJECT_ROOT, workspace)
     if action == "three_mode_smoke":
         return build_three_mode_smoke_command(PROJECT_ROOT)
+    if action == "compare":
+        st.success("比较视图已在下方打开；它只使用已保存的可比较结构化运行。")
+        return None
     processed_options = _processed_options()
     if not processed_options:
         st.warning("未找到已准备的 processed 数据。请先执行集中式 smoke。")
@@ -251,13 +254,18 @@ def _show_comparison(runs: list[RunSummary]) -> None:
         for item in runs
     ]
     st.dataframe(rows, use_container_width=True)
-    complete = [row for row in rows if row["status"] == "completed" and row["ADE (m)"] is not None]
+    complete = [
+        run
+        for run in runs
+        if run.status == "completed"
+        and run.ade is not None
+        and run.fairness is not None
+        and run.fairness.get("comparable") is True
+    ]
     if complete:
-        st.bar_chart(
-            {row["mode"]: row["ADE (m)"] for row in complete}, x_label="mode", y_label="ADE (m)"
-        )
+        st.bar_chart({run.mode: run.ade for run in complete}, x_label="mode", y_label="ADE (m)")
     else:
-        st.info("没有可比较的完成记录；失败记录仍在上表显示。")
+        st.info("没有可比较的完成记录；失败、缺失或公平性不符的运行仍在上表显示。")
 
 
 def _show_fairness(preflight) -> None:
