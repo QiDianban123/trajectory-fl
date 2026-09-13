@@ -45,3 +45,5 @@ def test_round_and_mode_plot_reject_failures_and_identity_mismatch(tmp_path: Pat
     )
     with pytest.raises(ValueError, match="failed records"):
         compare_modes([_record("centralized"), failed], tmp_path / "x.png")
+    with pytest.raises(ValueError, match="at most one"):
+        compare_modes([_record("centralized"), _record("centralized", ade=2)], tmp_path / "x.png")
