@@ -123,6 +123,8 @@ def compare_modes(
         raise ValueError("at least two mode records are required for comparison")
     if any(record.status != "completed" for record in records):
         raise ValueError("failed records cannot enter a mode comparison")
+    if len(identities) != len(records) or len(set(identities)) != 1:
+        raise ValueError("records do not share initial-state and budget identity")
     _same_identity(records)
     return plot_mode_comparison(sorted(records, key=lambda item: item.mode), output_path)
 
@@ -134,5 +136,3 @@ def _same_identity(records: Sequence[ResultRecord]) -> None:
             first.seed, first.split_id, first.code_sha, first.dataset, first.model
         ):
             raise ValueError("records do not share comparison identity")
-    if len(identities) != len(records) or len(set(identities)) != 1:
-        raise ValueError("records do not share initial-state and budget identity")
