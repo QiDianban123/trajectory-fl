@@ -1,4 +1,4 @@
-# D2 测试计划
+# D2—S2 测试计划
 
 **负责人：** F；**版本：** V1.0-D2。
 
@@ -10,21 +10,42 @@
 - `tests/unit/test_batching.py`：S1-C 单样本/批转换、错误输入、metadata 复制及 device 前置校验。
 - `tests/integration/test_data_model_bridge.py`：S1-C 现有 Dataset → DataLoader → ModelContract，
   覆盖三个 split、spawn worker 与尾批；只验证 AT-01 的桥接部分，不代表完整 highD 验收。
+- `tests/unit/test_processed_data.py`：S2-B cache identity、版本/配置失效、文件校验、
+  空 split、跨 split 一致性、inverse-transform 和确定性 batch。
+- `tests/integration/test_prepare_data_cli.py`：除 S1 CLI 事务外，验证生产 processed 产物
+  可由 S2 reader 在 0/1 worker 下重建为符合 ModelContract 的稳定 batch。
 - `tests/unit/test_federated_contracts.py`：ClientUpdate、失败记录、state_dict、样本数与非浮点 buffer 策略。
 - `tests/unit/test_metrics.py`、`test_evaluation_contracts.py`：米制 ADE/FDE、JSON/CSV schema 与图表输出路径。
 - `tests/unit/test_utils.py`：固定随机源、路径逃逸拒绝、run 输出目录、结构化日志和共享夹具。
+- `tests/unit/test_highd_adapter.py`：字段映射、异常拒绝、group-first split、train-only scaler、持久化和损坏缓存。
+- `tests/unit/test_partition.py`：5-RSU 边界、Non-IID 分配、合并、并集/交集和稳定重建。
+- `tests/integration/test_prepare_data_cli.py`：生产 CLI 的成功、缺输入、重复 run、事务回滚和 manifest 对齐。
+- `tests/system/test_s1_exit_smoke.py`：一条命令生成匿名数据并验证三个 split、默认 5-RSU 和运行产物索引。
+- `tests/unit/test_lstm_seq2seq.py`：S2-C LSTM 输出 shape/dtype/device、有限值、梯度及错误输入。
+- `tests/unit/test_torch_trainer.py`：S2-C 小样本过拟合、no_grad、梯度裁剪、best epoch 和
+  checkpoint 保存/恢复。
+- `tests/unit/test_centralized_evaluation.py`：S2-E 批量反归一化、已知米制 ADE/FDE、shape、
+  dtype、NaN/Inf、sample count、JSON/CSV 同源、artifact 路径及图表重建。
+- `tests/unit/test_model_recovery.py`：真实 dropout Trainer 固定 seed、调用方 RNG 恢复及
+  checkpoint 缺失/schema/state key/shape/dtype 恢复失败。
+- `tests/integration/test_centralized_experiment.py`：生产编排、checkpoint 预测一致性、失败
+  metadata、JSON 日志、manifest artifact 实体和 baseline/LSTM 同数据输入。
+- `tests/system/test_s2_centralized_cli_smoke.py`：匿名数据的一条命令 Centralized smoke。
 
 运行质量门禁：
 
 ```powershell
 python -m pytest -q
-python -m ruff check src tests
+python -m ruff check src tests scripts
 python -m src.cli validate-config
 ```
 
 依赖版本由 `requirements.txt` 管理。测试报告只记录命令与结果，不记录设备路径、账户或其他机器专属信息。
 
-本次 D2 基线已验证 `python -m pytest -q` 与 `python -m src.cli validate-config`；Ruff 检查在安装 `requirements.txt` 中声明的 Ruff 后执行。该前置条件不影响 pytest 的结果记录。
+D2 基线的历史结果保留在 D2 记录中。S1 最终范围、命令和证据以
+[MS2 S1 准出报告](milestones/MS2_S1_exit_report.md)为准。
+S2 的最终技术证据与人工评审状态以
+[MS3 S2 准出报告](milestones/MS3_S2_exit_report.md)为准。
 
 ## 后续测试挂钩
 
@@ -32,7 +53,7 @@ python -m src.cli validate-config
 |---|---|---|
 | D3-D4 | 字段映射、缺失/异常、时间顺序、可逆归一化、车辆/场景无交集 | AT-01、AT-04 的数据部分 |
 | D5-D6 | 模型形状/梯度/过拟合、训练—检查点集成 | AT-03 |
-| D7-D8（S3） | 客户端隔离、FedAvg 人工数学用例、两客户端一轮集成、三模式冒烟 | AT-05、AT-06 |
+| D7-D8（S3） | 客户端初态/存储/优化器隔离、顺序与重复性、真实访问数和空客户端；独立人工 FedAvg（1:3、[1,3]/[5,7]→[4,6]）、整数 buffer 保留、非法/缺失/失败更新、2 客户端×1 轮、恢复、三模式公平性、v2 JSON/CSV 重建和真实 smoke | AT-05、AT-06 |
 | D9-D10（S4） | 小样本端到端、配置/缺文件错误、结果汇总重建、干净环境验收 | AT-02、AT-07、AT-08 |
 
 每个新增核心函数必须包含正常、边界和异常用例；所有指标测试均使用反归一化物理坐标构造数据。pytest 的临时目录固定为仓库内 `.pytest-tmp/`，避免依赖系统临时目录权限。

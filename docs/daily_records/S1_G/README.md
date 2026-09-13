@@ -1,5 +1,9 @@
 # S1-G-01：RunContext、数据 Manifest 与复现基础
 
+> 后续状态（2026-09-10）：A/B 生产管线已合入 `dev`，并通过一键 5-RSU
+> smoke 与 G manifest 联调。最终证据见
+> [MS2 S1 准出报告](../../milestones/MS2_S1_exit_report.md)。
+
 本分支将 RunContext 和数据 manifest 接入可复现运行目录。实现范围包括
 配置快照、代码 SHA、数据文件 SHA-256、split/partition manifest、数据画像
 和产物相对路径；不读取训练数据内容，也不实现训练或 highD 清洗。

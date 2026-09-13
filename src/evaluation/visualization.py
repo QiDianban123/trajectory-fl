@@ -5,8 +5,15 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
+
+# Experiment commands and the Streamlit subprocess produce image artifacts; neither
+# requires an interactive GUI backend.  Select it before importing pyplot so the
+# documented one-command smoke also works in headless Windows environments.
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
 
 from src.evaluation.metrics import PHYSICAL_COORDINATE_UNIT, ade, fde
 from src.evaluation.result_store import ResultRecord
@@ -66,6 +73,61 @@ def plot_convergence(
     return path
 
 
+def plot_loss_curve(
+    train_losses: Sequence[float],
+    output_path: str | Path,
+    *,
+    validation_losses: Sequence[float] | None = None,
+) -> Path:
+    """Save centralized train/validation loss history without running training."""
+
+    train_values = _validate_losses(train_losses, "train_losses")
+    validation_values = None
+    if validation_losses is not None:
+        validation_values = _validate_losses(validation_losses, "validation_losses")
+        if len(validation_values) != len(train_values):
+            raise ValueError("train and validation loss histories must have equal length")
+    path = _prepare_output_path(output_path)
+
+    epochs = np.arange(len(train_values))
+    figure, axis = plt.subplots(figsize=(6, 4))
+    axis.plot(epochs, train_values, "o-", label="train loss")
+    if validation_values is not None:
+        axis.plot(epochs, validation_values, "o-", label="validation loss")
+    axis.set(xlabel="epoch", ylabel="MSE loss", title="Centralized training loss")
+    axis.legend()
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+    return path
+
+
+def plot_prediction_trajectory(
+    future: np.ndarray,
+    prediction: np.ndarray,
+    output_path: str | Path,
+) -> Path:
+    """Save one physical-coordinate future/prediction comparison."""
+
+    future_values, prediction_values = _validate_pair(future, prediction)
+    path = _prepare_output_path(output_path)
+    figure, axis = plt.subplots(figsize=(6, 4))
+    axis.plot(*future_values.T, "o-", label="future truth")
+    axis.plot(*prediction_values.T, "o--", label="prediction")
+    axis.set(
+        title=f"Prediction | ADE={ade(prediction_values, future_values):.3f}, "
+        f"FDE={fde(prediction_values, future_values):.3f}",
+        xlabel="x (m)",
+        ylabel="y (m)",
+    )
+    axis.legend()
+    axis.axis("equal")
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+    return path
+
+
 def plot_mode_comparison(records: Sequence[ResultRecord], output_path: str | Path) -> Path:
     """Save ADE/FDE bars for canonical result records."""
 
@@ -118,3 +180,12 @@ def _prepare_output_path(output_path: str | Path) -> Path:
         raise ValueError("output_path must include a filename with an extension")
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _validate_losses(values: Sequence[float], name: str) -> np.ndarray:
+    array = np.asarray(values, dtype=float)
+    if array.ndim != 1 or len(array) == 0:
+        raise ValueError(f"{name} must be a non-empty one-dimensional sequence")
+    if not np.isfinite(array).all() or np.any(array < 0):
+        raise ValueError(f"{name} must contain finite non-negative values")
+    return array

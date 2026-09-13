@@ -20,6 +20,7 @@ from src.data.partition import (
     PartitionError,
     PartitionManifest,
     check_partition_invariants,
+    client_group_id,
     partition_train_groups,
 )
 from src.experiments import RunContext
@@ -114,6 +115,7 @@ def prepare_data(
             scaler=cleaned["scaler"],  # type: ignore[arg-type]
             stats=cleaned["stats"],  # type: ignore[arg-type]
             data_version=str(cleaned["data_version"]),
+            data_config=dict(data_config),
         )
         partition_manifest_path = destination / "partition_manifest.json"
         _write_json(partition_manifest_path, partition.to_mapping())
@@ -202,7 +204,7 @@ def _find_raw_files(source: Path) -> list[Path]:
 
 
 def _group_id(recording_id: object, vehicle_id: object) -> str:
-    return json.dumps([str(recording_id), int(vehicle_id)], separators=(",", ":"))
+    return client_group_id(recording_id, vehicle_id)  # type: ignore[arg-type]
 
 
 def _train_group_extents(

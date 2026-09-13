@@ -64,12 +64,12 @@ class ResultRecord:
             raise ValueError("seed must be a non-negative integer")
         if self.mode not in SUPPORTED_MODES:
             raise ValueError(f"mode must be one of {SUPPORTED_MODES}")
-        if (
-            isinstance(self.sample_count, bool)
-            or not isinstance(self.sample_count, int)
-            or self.sample_count <= 0
-        ):
-            raise ValueError("sample_count must be a positive integer")
+        if isinstance(self.sample_count, bool) or not isinstance(self.sample_count, int):
+            raise ValueError("sample_count must be an integer")
+        if self.status == "completed" and self.sample_count <= 0:
+            raise ValueError("completed sample_count must be a positive integer")
+        if self.status == "failed" and self.sample_count < 0:
+            raise ValueError("failed sample_count must be a non-negative integer")
         for name in ("ade", "fde", "total_seconds"):
             value = getattr(self, name)
             if (

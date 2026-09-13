@@ -75,8 +75,7 @@ def validate_config_bundle(
     for key in ("history_steps", "future_steps"):
         if sequence[key] != model[key]:
             raise ConfigError(
-                f"data.sequence.{key} ({sequence[key]}) must equal "
-                f"model.model.{key} ({model[key]})"
+                f"data.sequence.{key} ({sequence[key]}) must equal model.model.{key} ({model[key]})"
             )
     if sequence["coordinate_dimension"] != model["input_size"]:
         raise ConfigError("data coordinate dimension must equal model input_size")
@@ -97,9 +96,7 @@ def _section(config: Mapping[str, Any], name: str) -> Mapping[str, Any]:
     return value
 
 
-def _require_keys(
-    section: Mapping[str, Any], section_name: str, keys: tuple[str, ...]
-) -> None:
+def _require_keys(section: Mapping[str, Any], section_name: str, keys: tuple[str, ...]) -> None:
     missing = [key for key in keys if key not in section]
     if missing:
         raise ConfigError(f"{section_name} is missing required keys: {', '.join(missing)}")
@@ -116,7 +113,7 @@ def _positive_number(value: Any, name: str, *, allow_zero: bool = False) -> None
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         valid = False
     else:
-        valid = value >= 0 if allow_zero else value > 0
+        valid = isfinite(value) and (value >= 0 if allow_zero else value > 0)
     if not valid:
         qualifier = "non-negative" if allow_zero else "positive"
         raise ConfigError(f"{name} must be a {qualifier} number")
@@ -333,6 +330,7 @@ def _validate_model(config: Mapping[str, Any]) -> None:
             "loss",
             "optimizer",
             "learning_rate",
+            "gradient_clip_norm",
             "batch_size",
             "epochs",
             "initialization",
@@ -342,6 +340,7 @@ def _validate_model(config: Mapping[str, Any]) -> None:
     if training["loss"] != "mse" or training["optimizer"] != "adam":
         raise ConfigError("P0 training loss/optimizer must be mse/adam")
     _positive_number(training["learning_rate"], "training.learning_rate")
+    _positive_number(training["gradient_clip_norm"], "training.gradient_clip_norm")
     _positive_int(training["batch_size"], "training.batch_size")
     _positive_int(training["epochs"], "training.epochs")
 
@@ -395,3 +394,33 @@ def _validate_experiment(config: Mapping[str, Any]) -> None:
     if execution["device"] not in ("cpu", "cuda", "auto"):
         raise ConfigError("execution.device must be cpu, cuda, or auto")
     _positive_int(execution["num_workers"], "execution.num_workers", allow_zero=True)
+    three_mode = config.get("three_mode")
+    if three_mode is not None:
+        if not isinstance(three_mode, Mapping):
+            raise ConfigError("three_mode must be a mapping")
+        _require_keys(
+            three_mode,
+            "three_mode",
+            (
+                "mode_matrix",
+                "rounds",
+                "local_epochs",
+                "clients_per_round",
+                "metric_schema",
+                "recovery",
+            ),
+        )
+        if three_mode["mode_matrix"] != ["centralized", "local_only", "federated"]:
+            raise ConfigError("three_mode.mode_matrix must list the three frozen modes in order")
+        for key in ("rounds", "local_epochs", "clients_per_round"):
+            _positive_int(three_mode[key], f"three_mode.{key}")
+        if three_mode["clients_per_round"] != config.get("expected_num_clients", 5):
+            raise ConfigError("three_mode.clients_per_round must equal expected_num_clients")
+        if three_mode["metric_schema"] != "ade_fde_meter_v1":
+            raise ConfigError("three_mode.metric_schema must be ade_fde_meter_v1")
+        recovery = three_mode["recovery"]
+        if (
+            not isinstance(recovery, Mapping)
+            or recovery.get("boundary") != "complete_client_or_round"
+        ):
+            raise ConfigError("three_mode.recovery.boundary must be complete_client_or_round")

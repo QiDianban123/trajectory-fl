@@ -1,0 +1,6 @@
+schema_version: 1
+run: {name: s3-federated-smoke, mode: federated, seed: 42, output_root: outputs}
+configs: {data: configs/data.yaml, model: configs/model.yaml}
+execution: {device: cpu, num_workers: 0}
+expected_num_clients: 5
+three_mode: {mode_matrix: [centralized, local_only, federated], rounds: 1, local_epochs: 1, clients_per_round: 5, metric_schema: ade_fde_meter_v1, recovery: {boundary: complete_client_or_round}}
