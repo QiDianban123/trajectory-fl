@@ -52,3 +52,14 @@
 3. 经平台合入 `dev` 后，B 才从最新 `origin/dev` 的 `feature/s3-b-client-dataloaders` 开始。
 4. 如果评审改变任一 Proposed 签名、字段或错误语义，先更新 contract、受影响 S2 回归映射和审阅；
    草案未批准前，CLI/UI 未实现模式继续禁用。
+
+## S3-A-01 生产增量（2026-09-13）
+
+- Issue：待创建；分支：`feature/s3-a-unified-mode-cli`；起点：`428e3f6a2c3a4685bec8952e8cae40ec6d9d8788`。原工作树的 `docs/daily_records/S1_B/D2_B.md` 修改保留且未暂存。
+- D7 实质增量及实现 SHA：`7600bbd9a82ba7b2bbd4c1f711d9122bc7ce2c75`。统一三模式 CLI/公共 runner、配置与路径预检、同一数据/seed/initial state、实际预算；Federated summary 使用聚合后 global state 指标，模式失败透传非零退出码。
+- D8 实质增量：新增四份 S3 配置、无参数真实 smoke、README 命令和证据；D8 SHA 由本文件所在后续提交给出，避免自引用循环。
+- 实际 smoke：`python scripts/run_three_mode_smoke.py` 退出 0；run_id `67251547124f`；默认 5 RSU，21/5/4 train/validation/test，三个 manifest 均 `completed` 且 `fairness.comparable=true`。
+- 门禁：Ruff 退出 0；A/G 专项 pytest 退出 0（26 passed）；默认和四份 S3 `validate-config` 均退出 0；`git diff --check` 退出 0。全量 pytest 为 1（323 passed、1 failed）：`test_streamlit_page_health`；单独复跑仍失败，直接启动确认当前复用 `.venv` 缺少 `streamlit`。
+- 缺陷闭环：修正旧 smoke holdout 越界样例、CLI 失败误报 0、矩阵结果缺 actual/exit、Local-only 总预算、Centralized 伪造实际预算、Federated 本地状态指标冒充 global 指标、旧 Centralized 配置兼容、resume/processed 路径约束和 `code_sha=unknown`。
+- AI 基础评审：Codex（GPT-5）审查 `7600bbd` 及 D8 工作树，P0=0；全量 UI 环境门禁仍阻塞正式完成。真人审批：待创建 MR 后由非作者完成；AI 记录不代替真人批准。
+- 下游接口：`src.experiments.mode_runner.run_mode/run_three_mode_matrix`、`ModeDispatchResult`、S3 `three_mode` schema、`CentralizedExperimentRequest.initial_state`。UI 可调用三个受控 `train --mode`，但 UI capability 启用属于后续 UI 工作包。
