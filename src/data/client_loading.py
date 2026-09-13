@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
 from math import isfinite
@@ -161,6 +162,7 @@ def create_client_dataloaders(
 
     if config.drop_last:
         raise ClientDataError("client loaders reject drop_last because it changes effective counts")
+    _validate_split_groups(data.datasets)
     intervals = _validate_intervals(partition)
     client_ids = tuple(client_id for client_id, _, _ in intervals)
     train_samples: dict[str, list[TrajectorySample]] = {client_id: [] for client_id in client_ids}
@@ -289,11 +291,28 @@ def _dataset_like(
     reference: TrajectoryDataset, samples: list[TrajectorySample]
 ) -> TrajectoryDataset:
     return TrajectoryDataset(
-        samples,
+        [
+            TrajectorySample(
+                history=sample.history.copy(),
+                future=sample.future.copy(),
+                meta=deepcopy(dict(sample.meta)),
+            )
+            for sample in samples
+        ],
         split=reference.split,
         split_id=reference.split_id,
         window_spec=reference.window_spec,
     )
+
+
+def _validate_split_groups(datasets: Mapping[SplitName, TrajectoryDataset]) -> None:
+    owners: dict[str, str] = {}
+    for split, dataset in datasets.items():
+        for sample in dataset:
+            group_id = _group_id(sample)
+            existing = owners.setdefault(group_id, split)
+            if existing != split:
+                raise ClientDataError("one vehicle group appears in multiple splits")
 
 
 def _loader_for_dataset(

@@ -46,7 +46,11 @@ def processed_cache(tmp_path: Path, config_bundle) -> tuple[Path, dict[str, obje
     config = deepcopy(config_bundle["data"])
     window = WindowSpec(**config["sequence"])
     datasets = {}
-    for split, count in (("train", 5), ("validation", 3), ("test", 2)):
+    for split, count, vehicle_offset in (
+        ("train", 5, 0),
+        ("validation", 3, 10),
+        ("test", 2, 20),
+    ):
         samples = []
         for index in range(count):
             samples.append(
@@ -57,7 +61,7 @@ def processed_cache(tmp_path: Path, config_bundle) -> tuple[Path, dict[str, obje
                         "dataset_name": "highd",
                         "data_version": "s3-b-data",
                         "recording_id": 1,
-                        "vehicle_id": index,
+                        "vehicle_id": vehicle_offset + index,
                         "history_start_frame": 0,
                         "history_end_frame": window.history_steps - 1,
                         "future_start_frame": window.history_steps,
@@ -139,6 +143,26 @@ def test_holdout_anchor_outside_frozen_intervals_is_rejected(processed_cache) ->
     )
     altered = replace(data, datasets=MappingProxyType({**data.datasets, "validation": validation}))
     with pytest.raises(ClientDataError, match="outside frozen client intervals"):
+        _loaders(altered, _five_client_partition())
+
+
+def test_client_loaders_reject_vehicle_group_leakage_across_splits(processed_cache) -> None:
+    data = _bundle(processed_cache)
+    leaked = data.datasets["validation"][0]
+    train_sample = data.datasets["train"][0]
+    duplicate_group = TrajectorySample(
+        history=leaked.history.copy(),
+        future=leaked.future.copy(),
+        meta={**leaked.meta, "vehicle_id": train_sample.meta["vehicle_id"]},
+    )
+    validation = TrajectoryDataset(
+        [duplicate_group, *data.datasets["validation"][1:]],
+        split="validation",
+        split_id=data.split_id,
+        window_spec=data.datasets["validation"].window_spec,
+    )
+    altered = replace(data, datasets=MappingProxyType({**data.datasets, "validation": validation}))
+    with pytest.raises(ClientDataError, match="multiple splits"):
         _loaders(altered, _five_client_partition())
 
 

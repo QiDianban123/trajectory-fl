@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from src.federated.contracts import validate_model_state
 from src.federated.training_adapter import clone_model_state
 from src.models.lstm_seq2seq import LSTMSeq2Seq
 from src.training.torch_trainer import TorchTrainer, TorchTrainerConfig
@@ -45,4 +46,5 @@ def build_isolated_client_trainer(
 def load_isolated_state(model: LSTMSeq2Seq, state: Mapping[str, Any]) -> None:
     """Load a clone so one client can never retain caller or peer tensor storage."""
 
+    validate_model_state(state, model.state_dict())
     model.load_state_dict(clone_model_state(state), strict=True)

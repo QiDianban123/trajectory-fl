@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+import pytest
 import torch
 
 from src.federated.training_adapter import model_state_id, snapshot_model_state
@@ -43,3 +44,7 @@ def test_client_factory_creates_independent_models_and_local_epoch_trainers(conf
     )
     assert trainer.config.epochs == 3
     assert model_config["training"]["epochs"] == 1
+
+    invalid = {key: value.to(torch.float64) for key, value in baseline.state.items()}
+    with pytest.raises(ValueError, match="dtype"):
+        load_isolated_state(second, invalid)

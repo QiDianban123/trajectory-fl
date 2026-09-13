@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 import torch
 
-from src.federated.aggregation import AggregationRequest
+from src.federated.aggregation import AggregationRequest, FedAvgAggregator
 from src.federated.client import ClientTrainRequest
 from src.federated.contracts import FederatedContractError, ModelStateError
 from src.federated.training_adapter import (
@@ -163,6 +163,23 @@ def test_fit_result_maps_shared_fields_and_is_aggregation_compatible() -> None:
     assert request.total_sample_count == 4
     first_key = next(iter(trained))
     assert update.state[first_key].data_ptr() != trained[first_key].data_ptr()
+
+
+def test_fedavg_revalidates_updates_after_request_construction() -> None:
+    baseline = clone_model_state(_model().state_dict())
+    state_id = model_state_id(baseline)
+    update = fit_result_to_client_update(
+        _fit_result(clone_model_state(baseline)),
+        client_id="rsu_01",
+        round_index=0,
+        global_state_id=state_id,
+        reference_state=baseline,
+    )
+    request = AggregationRequest(baseline, state_id, 0, (update,))
+    key = next(iter(update.state))
+    update.state[key] = update.state[key].reshape(-1)[:1]
+    with pytest.raises(ModelStateError):
+        FedAvgAggregator().aggregate(request)
 
 
 def test_last_epoch_adapter_keeps_best_adapter_compatible() -> None:
