@@ -88,7 +88,7 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
                 resolved = resolver.resolve(relative_path)
                 if resolved is not None:
                     artifact_paths[name] = resolved
-    facts = metrics if isinstance(metrics, dict) else summary
+    facts = summary if manifest.get("schema_version") == 2 and summary else metrics
     metrics_values = facts.get("metrics", {}) if isinstance(facts, dict) else {}
     timing = facts.get("timing_seconds", {}) if isinstance(facts, dict) else {}
     return RunSummary(
