@@ -22,6 +22,7 @@ from src.evaluation.data_diagnostics import (
 from src.evaluation.federated_results import (
     ClientResultRecord,
     ComparisonIdentity,
+    FairnessRecord,
     RoundRecord,
     compare_modes,
     plot_round_metrics,
@@ -49,6 +50,7 @@ __all__ = [
     "ResultRecord",
     "ClientResultRecord",
     "ComparisonIdentity",
+    "FairnessRecord",
     "RoundRecord",
     "ResultStore",
     "ade",

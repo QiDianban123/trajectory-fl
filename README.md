@@ -132,3 +132,16 @@ python scripts\run_ui.py
 页面只开放已验收的 Centralized smoke 和 Centralized train，S3 的 Local-only/Federated
 操作会显示为禁用状态。命令预览使用参数数组生成，页面不接受任意 shell 命令；已保存的
 metrics、manifest、日志、checkpoint 和图表从 run 目录只读加载。
+
+## S3-G 三模式编排边界
+
+`src.experiments` 公开 `LocalOnlyExperiment`、`FederatedExperiment` 及对应请求/结果类型。
+调用方先使用 B 的 `ClientDataBundle`、C 的模型与 trainer 工厂构造请求；runner 仅编排 D 的
+客户端/轮次执行接口，并将 E 的结构化记录写为 schema v2 JSON manifest。Local-only 在完整
+客户端边界提交，Federated 在完整聚合轮次边界提交；正式恢复入口是各 experiment 的
+`resume(request)`，恢复文件固定为运行目录内的 `checkpoints/recovery.json`。
+
+运行前会严格核验数据、划分、分区、scaler、模型配置、seed、初态、指标 schema 和计划预算。
+重复 run、完成运行覆盖、错误身份或损坏恢复包在训练前拒绝；运行后预算不一致会保留单模式
+产物，但标记 `comparable=false` 并返回非零结果。JSON 是唯一事实源，`results.csv` 只从结构化
+客户端记录导出。S3 的 CLI/UI 仍须等待 A/F/UI 后续集成和真人批准后才能启用。
