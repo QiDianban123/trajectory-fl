@@ -1,6 +1,6 @@
 """Federated-learning contracts; numerical implementation starts on Day 8."""
 
-from src.federated.aggregation import AggregationRequest, Aggregator
+from src.federated.aggregation import AggregationRequest, Aggregator, FedAvgAggregator
 from src.federated.client import ClientTrainRequest, FederatedClient
 from src.federated.contracts import ClientFailure, ClientSelection, ClientUpdate
 from src.federated.training_adapter import (
@@ -23,6 +23,7 @@ __all__ = [
     "ClientUpdate",
     "CLIENT_TRAINING_STAT_KEYS",
     "FederatedClient",
+    "FedAvgAggregator",
     "LocalTrainerAdapter",
     "ModelStateSnapshot",
     "clone_model_state",

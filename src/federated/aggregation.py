@@ -13,6 +13,7 @@ from src.federated.contracts import (
     validate_client_update,
     validate_model_state,
 )
+from src.federated.training_adapter import clone_model_state, model_state_id
 
 
 class NonFloatingBufferPolicy(str, Enum):
@@ -94,3 +95,33 @@ class Aggregator(Protocol):
     def aggregate(self, request: AggregationRequest) -> AggregationResult:
         """Weight floating entries by sample_count and preserve global non-floats."""
         ...
+
+
+class FedAvgAggregator:
+    """Numerical S3 FedAvg over validated client updates."""
+
+    def aggregate(self, request: AggregationRequest) -> AggregationResult:
+        if request.global_state_id != model_state_id(request.global_state):
+            raise FederatedContractError("global_state_id does not match global_state contents")
+        global_state = clone_model_state(request.global_state)
+        total = request.total_sample_count
+        state = {}
+        for key, global_value in global_state.items():
+            if global_value.is_floating_point():
+                value = global_value.detach().clone().zero_()
+                for update in request.updates:
+                    value.add_(
+                        update.state[key].to(value.device), alpha=update.sample_count / total
+                    )
+                state[key] = value
+            else:
+                state[key] = global_value.detach().clone()
+        result = AggregationResult(
+            state=state,
+            global_state_id=model_state_id(state),
+            round_index=request.round_index,
+            participating_client_ids=tuple(sorted(update.client_id for update in request.updates)),
+            total_sample_count=total,
+        )
+        result.validate_against(global_state)
+        return result
