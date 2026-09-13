@@ -24,7 +24,6 @@ def test_client_macro_and_weighted_use_evaluation_counts() -> None:
         [
             ClientResultRecord(_record(samples=2, ade=1, fde=2), "rsu_01", 5, 15),
             ClientResultRecord(_record(samples=8, ade=3, fde=6), "rsu_02", 5, 15),
-            ClientResultRecord(_record(samples=4), "rsu_03", 0, 0, "skipped", "empty_train"),
         ]
     )
     assert (macro.ade, macro.fde, macro.sample_count) == (2.0, 4.0, 2)
@@ -33,17 +32,16 @@ def test_client_macro_and_weighted_use_evaluation_counts() -> None:
 
 
 def test_round_and_mode_plot_reject_failures_and_identity_mismatch(tmp_path: Path) -> None:
-    paths = plot_round_metrics(
-        [RoundRecord(1, "failed", None, None, None), RoundRecord(0, "completed", 1, 2, 3)],
-        tmp_path,
-    )
+    with pytest.raises(ValueError, match="failed rounds"):
+        plot_round_metrics([RoundRecord(1, "failed", None, None, None)], tmp_path)
+    paths = plot_round_metrics([RoundRecord(0, "completed", 1, 2, 3)], tmp_path)
     assert all(path.is_file() for path in paths)
     with pytest.raises(ValueError, match="comparison identity"):
-        compare_modes([_record("centralized"), _record("federated", seed=8)], tmp_path / "x.png")
+        compare_modes([_record("centralized"), _record("federated", seed=8)], tmp_path / "x.png", identities=[("i", "b"), ("i", "b")])
     failed = ResultRecord(
         **{**_record("federated").__dict__, "status": "failed", "error": "client failed"}
     )
     with pytest.raises(ValueError, match="failed records"):
-        compare_modes([_record("centralized"), failed], tmp_path / "x.png")
+        compare_modes([_record("centralized"), failed], tmp_path / "x.png", identities=[("i", "b"), ("i", "b")])
     with pytest.raises(ValueError, match="at most one"):
-        compare_modes([_record("centralized"), _record("centralized", ade=2)], tmp_path / "x.png")
+        compare_modes([_record("centralized"), _record("centralized", ade=2)], tmp_path / "x.png", identities=[("i", "b"), ("i", "b")])

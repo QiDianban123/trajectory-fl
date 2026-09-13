@@ -32,6 +32,8 @@ class ClientResultRecord:
                 raise ValueError("completed client records require a completed ResultRecord")
         elif not isinstance(self.error, str) or not self.error.strip():
             raise ValueError("failed/skipped client records require an error")
+        elif self.record.status != "failed":
+            raise ValueError("failed/skipped client records require a failed ResultRecord")
 
 
 @dataclass(frozen=True)
@@ -90,6 +92,10 @@ def plot_round_metrics(
     ordered = sorted(rounds, key=lambda item: item.round_index)
     if len({item.round_index for item in ordered}) != len(ordered):
         raise ValueError("round records must have unique indices")
+    if any(item.status != "completed" for item in ordered):
+        raise ValueError("failed rounds cannot be plotted as a continuous curve")
+    if [item.round_index for item in ordered] != list(range(len(ordered))):
+        raise ValueError("round records must be contiguous from zero")
     completed = [item for item in ordered if item.status == "completed"]
     if not completed:
         raise ValueError("at least one completed round is required for plots")
@@ -108,7 +114,9 @@ def plot_round_metrics(
     )
 
 
-def compare_modes(records: Sequence[ResultRecord], output_path: str | Path) -> Path:
+def compare_modes(
+    records: Sequence[ResultRecord], output_path: str | Path, *, identities: Sequence[tuple[str, str]]
+) -> Path:
     """Reject incomparable/failed/duplicate modes before using the shared bar plot."""
 
     if len(records) < 2:
@@ -126,3 +134,5 @@ def _same_identity(records: Sequence[ResultRecord]) -> None:
             first.seed, first.split_id, first.code_sha, first.dataset, first.model
         ):
             raise ValueError("records do not share comparison identity")
+    if len(identities) != len(records) or len(set(identities)) != 1:
+        raise ValueError("records do not share initial-state and budget identity")
