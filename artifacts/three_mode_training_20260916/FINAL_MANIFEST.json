@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "manifest_type": "final_release_archive",
+  "status": "accepted_final_with_provenance_exception",
+  "release_evidence_eligible": true,
+  "created_at": "2026-09-16",
+  "provenance": {
+    "verified": false,
+    "details": "PROVENANCE.json"
+  },
+  "comparison_identity": {
+    "data_version": "highd-6543695c145b3019",
+    "split_id": "highd-split-0c1f1e8a84f896a6",
+    "partition_id": "partition-v1-69ea14c34c9561c4",
+    "scaler_id": "scaler-v1-664a4662c128a965",
+    "model_config_digest": "sha256:a52750f8b2de884fff5aee7bfb39a3891f9405d55df618e8b9af330a9f763501",
+    "seed": 42,
+    "initial_state_id": "sha256:e0da1b9cfa6f42aed0823a6f54b6ee40fdcf0ad14ba02538c52fa020c97e80a5",
+    "metric_schema": "ade_fde_meter_v1",
+    "training_sample_visits": 10726580,
+    "evaluation_sample_count": 115301
+  },
+  "results": [
+    {
+      "mode": "centralized",
+      "run_id": "highd-full-20-centralized-gpu-20260915",
+      "ade_meter": 1.5886782047188748,
+      "fde_meter": 3.521341878716431,
+      "total_seconds": 1926.5518875999987,
+      "model_paths": [
+        "models/centralized/best.pt"
+      ],
+      "result_path": "results/centralized/metrics.json",
+      "historical_manifest_path": "results/centralized/s3_manifest.json"
+    },
+    {
+      "mode": "local_only",
+      "run_id": "highd-full-20-local-only-gpu-20260916:rsu_01:weighted",
+      "ade_meter": 3.04760140869745,
+      "fde_meter": 7.612483139452217,
+      "total_seconds": 2835.5063658,
+      "model_paths": [
+        "models/local_only/rsu_01.pt",
+        "models/local_only/rsu_02.pt",
+        "models/local_only/rsu_03.pt",
+        "models/local_only/rsu_04.pt",
+        "models/local_only/rsu_05.pt"
+      ],
+      "result_path": "results/local_only/results.csv",
+      "historical_manifest_path": "results/local_only/manifest.json"
+    },
+    {
+      "mode": "federated",
+      "run_id": "highd-full-20-federated-gpu-20260916:global",
+      "ade_meter": 1.273000534734215,
+      "fde_meter": 2.9025821628624837,
+      "total_seconds": 2706.4080767999694,
+      "model_paths": [
+        "models/federated/global_round_0019.pt"
+      ],
+      "result_path": "results/federated/results.csv",
+      "historical_manifest_path": "results/federated/manifest.json"
+    }
+  ],
+  "historical_manifest_retention": {
+    "policy": "Historical manifests preserve original training-time paths. Missing intermediate outputs are intentionally not represented as retained final artifacts.",
+    "centralized": {
+      "training_time_artifact_references": 12,
+      "unretained_training_time_artifacts": 10
+    },
+    "local_only": {
+      "training_time_artifact_references": 20,
+      "unretained_training_time_artifacts": 18
+    },
+    "federated": {
+      "training_time_artifact_references": 150,
+      "unretained_training_time_artifacts": 148
+    }
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "scope": "Every retained file listed below must exist with the exact byte size and digest.",
+    "files": {
+      "README.md": {
+        "role": "documentation",
+        "size_bytes": 3136,
+        "sha256": "cf92efff83d16c1a72e12e25b871ff324b69e587d3a753a47a443e42b1b3b7ac"
+      },
+      "PROVENANCE.json": {
+        "role": "provenance",
+        "size_bytes": 977,
+        "sha256": "f6216a67d63a1b944cca22c8c3098b127f5b82c4c37da0e5175683b3af3b4bfb"
+      },
+      "SHA256SUMS": {
+        "role": "model_checksum_compatibility",
+        "size_bytes": 667,
+        "sha256": "fd2545b08c03c296a98d8dcc0ca54bc17f633f54583dbbca3ec16da80e283e51"
+      },
+      "comparison.csv": {
+        "role": "comparison_table",
+        "size_bytes": 338,
+        "sha256": "dfbdecf6f3cd96f250f65ad62537a40ff120cb095ff553a937df22dac00d3657"
+      },
+      "configs/data.yaml": {
+        "role": "configuration",
+        "size_bytes": 960,
+        "sha256": "97c749aec4893fd7b6375bec57f4f112c046a4503bad41a9ce719850f8007280"
+      },
+      "configs/model.yaml": {
+        "role": "configuration",
+        "size_bytes": 678,
+        "sha256": "a15cfe4563eb1cdd770abf0c2aae030b87235c67c40e4f8e51775d6e1011ceb5"
+      },
+      "configs/full_20_centralized.yaml": {
+        "role": "configuration",
+        "size_bytes": 432,
+        "sha256": "80b88c8dbd85c54537d637a98dc4543b4f4d0b3cae09586deef603387e8848ec"
+      },
+      "configs/full_20_local_only.yaml": {
+        "role": "configuration",
+        "size_bytes": 430,
+        "sha256": "5240349248c1dd02145a4a91493ad6cc6ca51e007fb659c1b5498b51217baa24"
+      },
+      "configs/full_20_federated.yaml": {
+        "role": "configuration",
+        "size_bytes": 428,
+        "sha256": "0f718cfa79b67c51f7c631b51bdcd910df9372aebb9296da0983ef2931561446"
+      },
+      "figures/baseline_trajectory.png": {
+        "role": "figure",
+        "size_bytes": 28483,
+        "sha256": "457bd04ee0ba74e29ebef79a8ba8052822c051382c6770dd02e37b3bf0ba714d"
+      },
+      "figures/loss_curve.png": {
+        "role": "figure",
+        "size_bytes": 46724,
+        "sha256": "0c47bb97679963e6e60255bd8e51363e0d3e7d43823755b191c1df3b074a1972"
+      },
+      "figures/prediction_trajectory.png": {
+        "role": "figure",
+        "size_bytes": 29190,
+        "sha256": "b799e2391613233a8d425774540ab69d5c07b4c4661d4cc288ce598ae1510560"
+      },
+      "figures/three_mode_comparison.png": {
+        "role": "figure",
+        "size_bytes": 41614,
+        "sha256": "5f7eee95d3e7639b5719f010ca40457fe286d01002e19f70c72dfbabf062d08a"
+      },
+      "models/centralized/best.pt": {
+        "role": "model",
+        "size_bytes": 144485,
+        "sha256": "adf1ee340ab00a5b42686f0ac7973c9f20fac172aaaf7b49f6b2dcf7c0842ef0"
+      },
+      "models/local_only/rsu_01.pt": {
+        "role": "model",
+        "size_bytes": 143925,
+        "sha256": "86f182556c7eb47550dbf43e5932f103072d0862bcd6fe13d0918e4370203735"
+      },
+      "models/local_only/rsu_02.pt": {
+        "role": "model",
+        "size_bytes": 143925,
+        "sha256": "4d96634423fcec2918deaed98a29291e7ca6589af1fee78064cdfd22a8ad7702"
+      },
+      "models/local_only/rsu_03.pt": {
+        "role": "model",
+        "size_bytes": 143925,
+        "sha256": "827df6a81013bf42815791f1ec41884aa014872c9085f129e3ad0ebc90e9e578"
+      },
+      "models/local_only/rsu_04.pt": {
+        "role": "model",
+        "size_bytes": 143925,
+        "sha256": "4a406ae8f2b068cf8a06c2ad64e1ceeec6cb2ce477f41723926b8c892638ec6f"
+      },
+      "models/local_only/rsu_05.pt": {
+        "role": "model",
+        "size_bytes": 143925,
+        "sha256": "e0f150122f9a75e20ef56e626dc974503a527c035ac7a3243d2cf5c2c70397f7"
+      },
+      "models/federated/global_round_0019.pt": {
+        "role": "model",
+        "size_bytes": 144021,
+        "sha256": "b326a208654bcd0a6a49446011b5dae9902f6e35c51a616db9fbecac3d37cd25"
+      },
+      "results/centralized/metrics.json": {
+        "role": "result",
+        "size_bytes": 974,
+        "sha256": "1b4537782b929c18217a4220378a5e43b8e2e7eeef4a2da9065cb0bf09960321"
+      },
+      "results/centralized/s3_manifest.json": {
+        "role": "historical_manifest",
+        "size_bytes": 3173,
+        "sha256": "90981da9b96dfb1338cff209fa8ce80bf1a4b7b8e5ee8c60c28bbd5f07c5028a"
+      },
+      "results/centralized/training_history.json": {
+        "role": "result",
+        "size_bytes": 3066,
+        "sha256": "c688c57c69471c9f71d109edb265c16744c6bbc0b81957473f769c64d42ccdc6"
+      },
+      "results/local_only/manifest.json": {
+        "role": "historical_manifest",
+        "size_bytes": 2026065,
+        "sha256": "6e7a0ff8699a916ee63795e967703008d3b1405017cabbcf26f978509473d046"
+      },
+      "results/local_only/results.csv": {
+        "role": "result",
+        "size_bytes": 1562123,
+        "sha256": "7fa04f298c570ae7ee527cb5b88ee780c2fba0b64aff56cef336c8093b252c9a"
+      },
+      "results/federated/manifest.json": {
+        "role": "historical_manifest",
+        "size_bytes": 2064774,
+        "sha256": "d0cf20a9ee7e81f0916f519b8f7fd74e2ea8abb4289b55f43c1cadc32bc12a55"
+      },
+      "results/federated/results.csv": {
+        "role": "result",
+        "size_bytes": 1562202,
+        "sha256": "8faa875f492d8575fc7fbed649ff7bd6c54c4f63650d745bc5512fc58177a274"
+      }
+    }
+  }
+}

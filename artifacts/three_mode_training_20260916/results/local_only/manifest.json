@@ -1,4 +1,9 @@
 {
+  "archive": {
+    "retention": "partial_training_outputs",
+    "status": "historical_run_manifest",
+    "note": "Training-time artifact paths are retained for provenance and may not exist in this release archive. FINAL_MANIFEST.json is the authoritative index of retained final artifacts."
+  },
   "artifacts": {
     "client_rsu_01": "clients/rsu_01/manifest.json",
     "client_rsu_01_final_state": "clients/rsu_01/final_state.pt",

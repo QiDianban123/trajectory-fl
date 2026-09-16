@@ -1,4 +1,9 @@
 {
+  "archive": {
+    "retention": "partial_training_outputs",
+    "status": "historical_run_manifest",
+    "note": "Training-time artifact paths are retained for provenance and may not exist in this release archive. FINAL_MANIFEST.json is the authoritative index of retained final artifacts."
+  },
   "artifacts": {
     "loss_curve": "figures/loss_curve.png",
     "metrics_csv": "metrics.csv",

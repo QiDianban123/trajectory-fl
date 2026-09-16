@@ -14,6 +14,19 @@ highD experiments. All three runs used seed 42, the same processed split,
 model configuration, initialization identity, and 10,726,580 training-sample
 visits.
 
+`FINAL_MANIFEST.json` is the authoritative release index. It lists only files
+that are actually retained in this archive and records their SHA-256 digests.
+The manifests under `results/` remain historical run records: their original
+training-time artifact paths are preserved for provenance, but omitted
+intermediate checkpoints, RNG states, predictions, and logs are not part of
+the final archive.
+
+Verify the complete retained scope from the repository root with:
+
+```text
+python scripts/verify_final_archive.py
+```
+
 ## Final comparison
 
 | Mode | ADE (m) | FDE (m) | Runtime (s) | Test samples |
@@ -39,6 +52,8 @@ model with the archived configuration before calling `load_state_dict`.
 ## Results and figures
 
 - `comparison.csv`: compact machine-readable comparison.
+- `FINAL_MANIFEST.json`: authoritative final models, results, configuration,
+  figures, retention scope, and per-file integrity hashes.
 - `results/`: original metrics, manifests, histories, and per-mode result
   tables.
 - `figures/three_mode_comparison.png`: unified ADE/FDE comparison.
