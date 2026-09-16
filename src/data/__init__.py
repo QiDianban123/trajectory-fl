@@ -2,6 +2,13 @@
 
 from src.data.adapters import DatasetAdapter, TrajectorySample
 from src.data.cache import processed_cache_key, semantic_config_digest, semantic_data_config
+from src.data.client_loading import (
+    ClientDataBundle,
+    ClientDataError,
+    ClientDataLoaders,
+    ClientDataProfile,
+    create_client_dataloaders,
+)
 from src.data.dataset import TrajectoryDataset
 from src.data.loading import (
     DataLoaderConfig,
@@ -19,6 +26,7 @@ from src.data.partition import (
     RegionIndex,
     build_group_index,
     check_partition_invariants,
+    client_group_id,
     equal_width_edges,
     partition_train_groups,
     region_occupancy,
@@ -27,6 +35,10 @@ from src.data.preprocess import TrainingCoordinateScaler, WindowSpec
 
 __all__ = [
     "ClientPartition",
+    "ClientDataBundle",
+    "ClientDataError",
+    "ClientDataLoaders",
+    "ClientDataProfile",
     "DatasetAdapter",
     "DataLoaderConfig",
     "GroupExtent",
@@ -42,6 +54,7 @@ __all__ = [
     "TrainingCoordinateScaler",
     "WindowSpec",
     "build_group_index",
+    "client_group_id",
     "check_partition_invariants",
     "equal_width_edges",
     "partition_train_groups",
@@ -50,4 +63,5 @@ __all__ = [
     "semantic_config_digest",
     "semantic_data_config",
     "create_dataloaders",
+    "create_client_dataloaders",
 ]

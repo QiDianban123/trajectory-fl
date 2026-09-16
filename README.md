@@ -132,3 +132,45 @@ python scripts\run_ui.py
 页面只开放已验收的 Centralized smoke 和 Centralized train，S3 的 Local-only/Federated
 操作会显示为禁用状态。命令预览使用参数数组生成，页面不接受任意 shell 命令；已保存的
 metrics、manifest、日志、checkpoint 和图表从 run 目录只读加载。
+
+## S3-G 三模式编排边界
+
+`src.experiments` 公开 `LocalOnlyExperiment`、`FederatedExperiment` 及对应请求/结果类型。
+调用方先使用 B 的 `ClientDataBundle`、C 的模型与 trainer 工厂构造请求；runner 仅编排 D 的
+客户端/轮次执行接口，并将 E 的结构化记录写为 schema v2 JSON manifest。Local-only 在完整
+客户端边界提交，Federated 在完整聚合轮次边界提交；正式恢复入口是各 experiment 的
+`resume(request)`，恢复文件固定为运行目录内的 `checkpoints/recovery.json`。
+
+运行前会严格核验数据、划分、分区、scaler、模型配置、seed、初态、指标 schema 和计划预算。
+重复 run、完成运行覆盖、错误身份或损坏恢复包在训练前拒绝；运行后预算不一致会保留单模式
+产物，但标记 `comparable=false` 并返回非零结果。JSON 是唯一事实源，`results.csv` 只从结构化
+客户端记录导出。
+
+## S3-A 三模式生产 CLI 候选
+
+三种模式共用同一入口；配置中的 `run.mode` 必须与命令一致：
+
+```powershell
+python -m src.cli validate-config --experiment configs/experiments/s3_federated_smoke.yaml
+python -m src.cli train --mode centralized --experiment configs/experiments/s3_centralized_smoke.yaml --processed-dir data/processed/<split_id> --output-root outputs --run-id <run_id>
+python -m src.cli train --mode local_only --experiment configs/experiments/s3_local_only_smoke.yaml --processed-dir data/processed/<split_id> --output-root outputs --run-id <run_id>
+python -m src.cli train --mode federated --experiment configs/experiments/s3_federated_smoke.yaml --processed-dir data/processed/<split_id> --output-root outputs --run-id <run_id>
+python scripts/run_three_mode_smoke.py
+```
+
+Local-only/Federated 从失败或中断边界恢复时，复用原 `run-id` 并增加
+`--resume-checkpoint checkpoints/recovery.json`。配置、processed 数据、输出和恢复路径均受仓库
+白名单限制；模式失败返回非零并保留 manifest。当前 UI 仍只开放 Centralized；可用命令清单为
+`status`、`validate-config`、`prepare-data`、上述三个 `train` 模式及无参数三模式 smoke。
+
+## S3 三模式控制台（UI-1 候选）
+
+保持既有 Streamlit 启动入口：
+
+```powershell
+python scripts\run_ui.py
+```
+
+控制台使用白名单参数数组开放 Centralized、Local-only、Federated、三模式 smoke 和失败运行恢复。
+页面先显示 S3 配置公平性预检，生产 runner 会再次校验；结果、RSU、轮次和 artifact 仅从保存的
+manifest/JSON/CSV 读取。UI-1 不包含三模式比较图或发布功能。

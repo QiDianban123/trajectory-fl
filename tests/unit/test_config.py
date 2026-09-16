@@ -104,13 +104,17 @@ def test_data_config_requires_partition_section() -> None:
 def test_partition_region_edges_schema_is_validated() -> None:
     base = load_yaml(PROJECT_ROOT / "configs/data.yaml")
     wrong_length = dict(base)
-    wrong_length["partition"] = dict(base["partition"], region_edges=[0.0, 10.0])
+    wrong_length["partition"] = dict(
+        base["partition"], region_edges=[0.0, 10.0], target_sample_ratios=None
+    )
     with pytest.raises(ConfigError, match="num_clients \\+ 1"):
         validate_config(wrong_length, "data")
 
     unordered = dict(base)
     bad_edges = [0.0, 30.0, 20.0, 40.0, 50.0, 60.0]
-    unordered["partition"] = dict(base["partition"], region_edges=bad_edges)
+    unordered["partition"] = dict(
+        base["partition"], region_edges=bad_edges, target_sample_ratios=None
+    )
     with pytest.raises(ConfigError, match="strictly increasing"):
         validate_config(unordered, "data")
 
@@ -126,6 +130,7 @@ def test_partition_nonfinite_yaml_edges_are_rejected(tmp_path: Path, index, valu
     edges = [0.0, 10.0, 20.0, 30.0, 40.0, 50.0]
     edges[index] = value
     config["partition"]["region_edges"] = edges
+    config["partition"]["target_sample_ratios"] = None
     data_path = tmp_path / "nonfinite-data.yaml"
     data_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     with pytest.raises(ConfigError, match=rf"partition.region_edges\[{index}\].*finite"):

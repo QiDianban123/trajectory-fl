@@ -59,6 +59,8 @@ def test_fit_overfits_small_batch_and_returns_best_checkpoint() -> None:
     assert len(result.epoch_stats) == 100
     assert all(stat.sample_count == 4 for stat in result.epoch_stats)
     assert result.best_epoch == result.checkpoint_payload["epoch"]
+    assert result.last_checkpoint_payload is not None
+    assert result.last_checkpoint_payload["epoch"] == result.epoch_stats[-1].epoch
     assert final_loss < initial_loss * 0.05
     assert final_loss == pytest.approx(
         result.epoch_stats[result.best_epoch].validation_loss, rel=1e-6

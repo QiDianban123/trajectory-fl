@@ -75,6 +75,7 @@ class FitResult:
     epoch_stats: tuple[EpochStats, ...]
     best_epoch: int
     checkpoint_payload: Mapping[str, object]
+    last_checkpoint_payload: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         if not self.epoch_stats:
@@ -82,6 +83,10 @@ class FitResult:
         if self.best_epoch not in {stat.epoch for stat in self.epoch_stats}:
             raise ValueError("best_epoch must identify one returned epoch statistic")
         validate_checkpoint_payload(self.checkpoint_payload)
+        if self.last_checkpoint_payload is not None:
+            validate_checkpoint_payload(self.last_checkpoint_payload)
+            if self.last_checkpoint_payload["epoch"] != self.epoch_stats[-1].epoch:
+                raise ValueError("last checkpoint epoch must match the final epoch statistic")
 
 
 @dataclass(frozen=True)

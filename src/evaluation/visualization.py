@@ -5,8 +5,15 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
+
+# Experiment commands and the Streamlit subprocess produce image artifacts; neither
+# requires an interactive GUI backend.  Select it before importing pyplot so the
+# documented one-command smoke also works in headless Windows environments.
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
 
 from src.evaluation.metrics import PHYSICAL_COORDINATE_UNIT, ade, fde
 from src.evaluation.result_store import ResultRecord

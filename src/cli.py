@@ -10,6 +10,7 @@ from pathlib import Path
 
 from src.data.prepare import PrepareDataError, prepare_data
 from src.experiments.centralized import CentralizedExperiment, CentralizedExperimentRequest
+from src.experiments.mode_runner import run_mode
 from src.utils.config import ConfigError, load_and_validate, validate_config_bundle
 
 DEFAULT_DATA_CONFIG = Path("configs/data.yaml")
@@ -63,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "status":
-        print("D2 design review complete: highD selected; core interfaces are frozen for D3.")
+        print("S3 three-mode CLI candidate: centralized, local-only, and federated enabled.")
         return 0
     if args.command == "validate-config":
         try:
@@ -97,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Run manifest: {prepared.run_manifest_path}")
         return 0
     if args.command == "train":
-        if args.mode != "centralized":
+        if args.mode not in ("centralized", "local_only", "federated"):
             print(
                 f"Train error: unsupported mode {args.mode!r}; expected 'centralized'",
                 file=sys.stderr,
@@ -114,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
             run_id = args.run_id or f"centralized-{uuid.uuid4().hex[:12]}"
             effective_bundle = _effective_train_bundle(
                 bundle,
+                mode=args.mode,
                 processed_dir=processed_dir,
                 output_root=output_root,
                 run_id=run_id,
@@ -122,18 +124,32 @@ def main(argv: list[str] | None = None) -> int:
                 epochs=args.epochs,
                 batch_size=args.batch_size,
             )
-            result = CentralizedExperiment().run(
-                CentralizedExperimentRequest(
-                    config_bundle=effective_bundle,
-                    processed_dir=processed_dir,
+            if args.mode == "centralized" and "three_mode" not in bundle["experiment"]:
+                result = CentralizedExperiment().run(
+                    CentralizedExperimentRequest(
+                        config_bundle=effective_bundle,
+                        processed_dir=processed_dir,
+                        project_root=Path.cwd(),
+                        run_id=run_id,
+                        output_root=output_root,
+                        expected_data_version=args.data_version,
+                        expected_split_id=args.split_id,
+                        resume_checkpoint=args.resume_checkpoint,
+                    )
+                )
+            else:
+                dispatched = run_mode(
+                    effective_bundle,
+                    mode=args.mode,
                     project_root=Path.cwd(),
+                    processed_dir=Path(processed_dir),
+                    output_root=Path(output_root),
                     run_id=run_id,
-                    output_root=output_root,
+                    resume_checkpoint=args.resume_checkpoint,
                     expected_data_version=args.data_version,
                     expected_split_id=args.split_id,
-                    resume_checkpoint=args.resume_checkpoint,
                 )
-            )
+                result = dispatched.result
         except (
             ConfigError,
             FileNotFoundError,
@@ -144,13 +160,14 @@ def main(argv: list[str] | None = None) -> int:
         ) as exc:
             print(f"Train error: {exc}", file=sys.stderr)
             return 2
-        print(f"run_id={result.record.run_id}")
-        print(f"best_epoch={result.best_epoch} sample_count={result.record.sample_count}")
-        print(f"ADE={result.record.ade:.6f}m FDE={result.record.fde:.6f}m")
-        print(f"checkpoint={result.checkpoint_path}")
-        print(f"metrics={result.output_dir / 'metrics.json'}")
-        print(f"figures={result.output_dir / 'figures'}")
-        return 0
+        if args.mode == "centralized":
+            print(f"run_id={result.record.run_id}")
+            print(f"ADE={result.record.ade:.6f}m FDE={result.record.fde:.6f}m")
+            print(f"metrics={result.output_dir / 'metrics.json'}")
+        else:
+            print(f"run_id={result.run_id} status={result.status}")
+            print(f"manifest={result.manifest_path}")
+        return int(getattr(result, "exit_code", 0))
     if args.command == "compare":
         print(
             f"Command '{args.command}' is defined by the D2 interface but is not implemented yet; "
@@ -174,6 +191,7 @@ def _load_train_bundle(
 def _effective_train_bundle(
     bundle: dict[str, dict[str, object]],
     *,
+    mode: str,
     processed_dir: object,
     output_root: object,
     run_id: str,
@@ -188,7 +206,10 @@ def _effective_train_bundle(
     assert isinstance(dataset, dict)
     assert isinstance(run, dict)
     dataset["processed_dir"] = str(processed_dir)
-    run["mode"] = "centralized"
+    configured_mode = run.get("mode")
+    if "three_mode" in effective["experiment"] and configured_mode != mode:
+        raise ValueError(f"CLI mode {mode!r} does not match experiment mode {configured_mode!r}")
+    run["mode"] = mode
     run["output_root"] = str(output_root)
     if seed is not None:
         if seed < 0:

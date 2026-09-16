@@ -1,0 +1,36 @@
+schema_version: 1
+
+model:
+  name: lstm_encoder_decoder
+  history_steps: 75
+  future_steps: 125
+  input_size: 2
+  output_size: 2
+  hidden_size: 64
+  num_layers: 1
+  dropout: 0.0
+  dtype: float32
+  coordinate_representation: absolute_position
+  device_policy: trainer_managed
+
+training:
+  loss: mse
+  optimizer: adam
+  learning_rate: 0.001
+  gradient_clip_norm: 1.0
+  batch_size: 32
+  epochs: 1
+  initialization:
+    owner: experiment_runner
+    strategy: xavier_uniform
+    share_initial_state: true
+  checkpoint:
+    schema_version: 1
+    required_keys:
+      - schema_version
+      - model_state
+      - model_config
+      - seed
+      - epoch
+      - split_id
+      - metrics
