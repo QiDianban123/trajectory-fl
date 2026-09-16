@@ -1,5 +1,13 @@
 # Three-mode full-training archive
 
+> **Provenance warning:** this archive is retained as a provisional experiment
+> record, not final release evidence. Its manifests recorded Git HEAD
+> `da360341570941e38f532069c1aac76e477553bb`, while source and configuration
+> changes needed by the full-data run were first committed together with the
+> archive in `b3d465cbc6ce80cbf6409e7560684d39ed10bd1b`. The historical worktree
+> state cannot be proven retroactively. See `PROVENANCE.json`; rerun the formal
+> matrix from a clean committed revision before MS5 / v1.0.0 approval.
+
 This directory contains the retained artifacts from the comparable 20-pass
 highD experiments. All three runs used seed 42, the same processed split,
 model configuration, initialization identity, and 10,726,580 training-sample
@@ -37,6 +45,7 @@ model with the archived configuration before calling `load_state_dict`.
   figures produced by the runner.
 - `configs/`: snapshots of the data, model, and three experiment configs.
 - `SHA256SUMS`: integrity hashes for all retained model files.
+- `PROVENANCE.json`: machine-readable provenance status and release eligibility.
 
 Large per-sample predictions, intermediate recovery checkpoints, RNG states,
 and logs remain excluded by `.gitignore`; they are not required for inference

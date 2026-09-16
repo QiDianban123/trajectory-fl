@@ -415,6 +415,18 @@ def _validate_experiment(config: Mapping[str, Any]) -> None:
     if execution["device"] not in ("cpu", "cuda", "auto"):
         raise ConfigError("execution.device must be cpu, cuda, or auto")
     _positive_int(execution["num_workers"], "execution.num_workers", allow_zero=True)
+
+    provenance = config.get("provenance")
+    if provenance is not None:
+        if not isinstance(provenance, Mapping):
+            raise ConfigError("provenance must be a mapping")
+        unknown = sorted(set(provenance) - {"require_clean_git"})
+        if unknown:
+            raise ConfigError(f"provenance has unknown keys: {', '.join(unknown)}")
+        _require_keys(provenance, "provenance", ("require_clean_git",))
+        if not isinstance(provenance["require_clean_git"], bool):
+            raise ConfigError("provenance.require_clean_git must be boolean")
+
     three_mode = config.get("three_mode")
     if three_mode is not None:
         if not isinstance(three_mode, Mapping):

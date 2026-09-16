@@ -27,6 +27,19 @@ def test_default_bundle_is_valid() -> None:
     assert bundle["experiment"]["run"]["mode"] == "smoke"
 
 
+def test_formal_experiment_requires_boolean_clean_git_provenance() -> None:
+    config = load_yaml(PROJECT_ROOT / "configs/experiments/full_20_centralized.yaml")
+    assert validate_config(config, "experiment")["provenance"] == {"require_clean_git": True}
+
+    config["provenance"] = {"require_clean_git": "yes"}
+    with pytest.raises(ConfigError, match="require_clean_git must be boolean"):
+        validate_config(config, "experiment")
+
+    config["provenance"] = {"require_clean_git": True, "unknown": True}
+    with pytest.raises(ConfigError, match="unknown keys"):
+        validate_config(config, "experiment")
+
+
 def test_gradient_clip_norm_must_be_positive_and_finite() -> None:
     base = load_yaml(PROJECT_ROOT / "configs/model.yaml")
     for invalid in (0, -1.0, float("inf"), float("nan")):

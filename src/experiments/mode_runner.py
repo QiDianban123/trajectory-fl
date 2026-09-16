@@ -62,18 +62,21 @@ def run_mode(
     resume_checkpoint=None,
     code_sha=None,
 ):
+    root = Path(project_root).resolve()
+    sha = _resolve_code_sha(bundle, root, code_sha)
     context = _prepare(
-        bundle, project_root, processed_dir, output_root, expected_data_version, expected_split_id
+        bundle, root, processed_dir, output_root, expected_data_version, expected_split_id
     )
-    return _run(bundle, context, mode, run_id, resume_checkpoint, code_sha or _git_sha(context[0]))
+    return _run(bundle, context, mode, run_id, resume_checkpoint, sha)
 
 
 def run_three_mode_matrix(
     bundle, *, project_root, processed_dir, output_root, run_id, code_sha=None
 ):
     validate_run_id(run_id)
-    context = _prepare(bundle, project_root, processed_dir, output_root, None, None)
-    sha = code_sha or _git_sha(context[0])
+    root = Path(project_root).resolve()
+    sha = _resolve_code_sha(bundle, root, code_sha)
+    context = _prepare(bundle, root, processed_dir, output_root, None, None)
     plans = {m: _budget(context[4], context[7], m) for m in MODES}
     return ThreeModeExperiment().run(
         ThreeModeRunRequest(
@@ -330,8 +333,42 @@ def _central_manifest(result, identity, planned, actual):
     )
 
 
-def _git_sha(root):
+def _resolve_code_sha(bundle, root: Path, supplied_sha: str | None) -> str:
+    provenance = bundle["experiment"].get("provenance", {})
+    require_clean = bool(provenance.get("require_clean_git", False))
+    actual_sha = _git_sha(root, require_clean=require_clean)
+    if supplied_sha is not None and require_clean and supplied_sha != actual_sha:
+        raise ExperimentInputError(
+            "supplied code_sha does not match the clean project HEAD: "
+            f"{supplied_sha!r} != {actual_sha!r}"
+        )
+    return supplied_sha or actual_sha
+
+
+def _git_sha(root: Path, *, require_clean: bool = False) -> str:
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=False
     )
-    return result.stdout.strip() if result.returncode == 0 else "unknown"
+    if result.returncode != 0:
+        if require_clean:
+            raise ExperimentInputError("formal experiment requires a readable Git HEAD")
+        return "unknown"
+    sha = result.stdout.strip()
+    if require_clean:
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if status.returncode != 0:
+            raise ExperimentInputError("formal experiment cannot verify Git worktree state")
+        changed = [line[3:] for line in status.stdout.splitlines() if line.strip()]
+        if changed:
+            preview = ", ".join(changed[:3])
+            suffix = " ..." if len(changed) > 3 else ""
+            raise ExperimentInputError(
+                f"formal experiment requires a clean Git worktree; changed paths: {preview}{suffix}"
+            )
+    return sha

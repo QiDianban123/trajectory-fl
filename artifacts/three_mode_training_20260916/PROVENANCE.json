@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "status": "provisional_unverifiable_worktree",
+  "release_evidence_eligible": false,
+  "recorded_runtime_head": "da360341570941e38f532069c1aac76e477553bb",
+  "archive_commit": "b3d465cbc6ce80cbf6409e7560684d39ed10bd1b",
+  "closest_preserved_source_snapshot": "b3d465cbc6ce80cbf6409e7560684d39ed10bd1b",
+  "reason": "The archive records the parent Git HEAD, while source and configuration changes required by the full-data run were first committed together with the generated artifacts. The exact dirty worktree used for training cannot be proven retroactively.",
+  "remediation": "Rerun the formal three-mode matrix from a clean committed revision using configs with provenance.require_clean_git=true, then replace this provisional archive or retain it only as historical evidence."
+}
