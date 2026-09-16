@@ -53,6 +53,7 @@
     "seed": 42,
     "split_id": "highd-split-0c1f1e8a84f896a6"
   },
+  "mode": "centralized",
   "rounds": [],
   "run_id": "highd-full-20-centralized-gpu-20260915",
   "schema_version": 2,

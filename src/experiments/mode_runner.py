@@ -308,6 +308,7 @@ def _central_manifest(result, identity, planned, actual):
     payload = {
         "schema_version": 2,
         "run_id": result.record.run_id,
+        "mode": result.record.mode,
         "status": "completed" if comparable else "failed",
         "error": None if comparable else {"code": "BudgetMismatch"},
         "identity": identity.to_identity_dict(),

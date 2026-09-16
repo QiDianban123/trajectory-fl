@@ -184,6 +184,13 @@ def test_real_two_client_local_and_one_federated_round(tmp_path: Path) -> None:
     assert federated.round_records[0].total_train_sample_count == 4
     manifest = json.loads(federated.manifest_path.read_text())
     assert manifest["schema_version"] == 2
+    assert manifest["summary"]["metrics"] == {
+        "ade": federated.summary.ade,
+        "fde": federated.summary.fde,
+    }
+    assert manifest["summary"]["timing_seconds"] == {"total": federated.summary.total_seconds}
+    assert "ade" not in manifest["summary"]
+    assert "artifact_paths" not in manifest["summary"]
     assert manifest["rounds"][0]["input_global_state_id"] == model_state_id(_initial_state())
     assert Path(federated.output_dir / manifest["artifacts"]["results_csv"]).is_file()
     with (federated.output_dir / manifest["artifacts"]["results_csv"]).open(

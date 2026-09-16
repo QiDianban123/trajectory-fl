@@ -26,5 +26,6 @@ def test_real_three_mode_smoke_writes_comparable_manifests() -> None:
     for path in manifests.values():
         manifest = json.loads(path.read_text(encoding="utf-8"))
         assert manifest["status"] == "completed"
+        assert manifest["mode"] in {"centralized", "local_only", "federated"}
         assert manifest["fairness"]["comparable"] is True
         assert manifest["summary"] is not None

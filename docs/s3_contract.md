@@ -202,6 +202,10 @@ python -m src.cli train --mode {centralized,local_only,federated} \
   --run-id <safe id> [--seed <nonnegative>] [--resume-checkpoint <relative path>]
 
 python scripts/run_three_mode_smoke.py
+
+python -m src.cli compare \
+  --runs <centralized-run-or-manifest> <local-only-run-or-manifest> <federated-run-or-manifest> \
+  --output <comparison.png>
 ```
 
 所有 CLI path 必须经 `resolve_within(project_root, ...)`：data/model/experiment 在 `configs/`，

@@ -161,7 +161,17 @@ python scripts/run_three_mode_smoke.py
 Local-only/Federated 从失败或中断边界恢复时，复用原 `run-id` 并增加
 `--resume-checkpoint checkpoints/recovery.json`。配置、processed 数据、输出和恢复路径均受仓库
 白名单限制；模式失败返回非零并保留 manifest。当前 UI 仍只开放 Centralized；可用命令清单为
-`status`、`validate-config`、`prepare-data`、上述三个 `train` 模式及无参数三模式 smoke。
+`status`、`validate-config`、`prepare-data`、上述三个 `train` 模式、`compare` 及无参数三模式 smoke。
+
+三个已完成且公平性校验通过的 schema-v2 运行可直接生成统一比较图；`--runs` 接受运行目录或
+manifest 文件，且必须各包含一次 Centralized、Local-only 和 Federated：
+
+```powershell
+python -m src.cli compare --runs outputs/<centralized-run> outputs/<local-only-run> outputs/<federated-run> --output outputs/three_mode_comparison.png
+```
+
+比较入口会核验数据/划分、模型配置、seed、初始状态、指标口径、样本访问预算、客户端覆盖和
+评价样本数；失败或不可比较的运行返回退出码 2，不生成图表。
 
 ## S3 三模式控制台（UI-1 候选）
 

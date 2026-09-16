@@ -9,6 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from src.data.prepare import PrepareDataError, prepare_data
+from src.evaluation.comparison import compare_run_manifests
 from src.experiments.centralized import CentralizedExperiment, CentralizedExperimentRequest
 from src.experiments.mode_runner import run_mode
 from src.utils.config import ConfigError, load_and_validate, validate_config_bundle
@@ -56,15 +57,24 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--split-id")
     train_parser.add_argument("--resume-checkpoint", type=Path)
 
-    compare_parser = subparsers.add_parser("compare", help="summarize three-mode results")
-    compare_parser.add_argument("--config", type=Path, default=DEFAULT_EXPERIMENT_CONFIG)
+    compare_parser = subparsers.add_parser("compare", help="compare completed three-mode results")
+    compare_parser.add_argument(
+        "--runs",
+        type=Path,
+        nargs="+",
+        required=True,
+        help="three run directories or schema-v2 manifest files",
+    )
+    compare_parser.add_argument(
+        "--output", type=Path, required=True, help="destination PNG comparison figure"
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "status":
-        print("S3 three-mode CLI candidate: centralized, local-only, and federated enabled.")
+        print("S4 CLI: centralized, local-only, federated, and compare are enabled.")
         return 0
     if args.command == "validate-config":
         try:
@@ -100,7 +110,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "train":
         if args.mode not in ("centralized", "local_only", "federated"):
             print(
-                f"Train error: unsupported mode {args.mode!r}; expected 'centralized'",
+                f"Train error: unsupported mode {args.mode!r}; expected one of "
+                "'centralized', 'local_only', or 'federated'",
                 file=sys.stderr,
             )
             return 2
@@ -112,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.processed_dir if args.processed_dir is not None else dataset["processed_dir"]
             )
             output_root = args.output_root if args.output_root is not None else run["output_root"]
-            run_id = args.run_id or f"centralized-{uuid.uuid4().hex[:12]}"
+            run_id = args.run_id or f"{args.mode}-{uuid.uuid4().hex[:12]}"
             effective_bundle = _effective_train_bundle(
                 bundle,
                 mode=args.mode,
@@ -169,12 +180,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"manifest={result.manifest_path}")
         return int(getattr(result, "exit_code", 0))
     if args.command == "compare":
-        print(
-            f"Command '{args.command}' is defined by the D2 interface but is not implemented yet; "
-            "see the project schedule.",
-            file=sys.stderr,
-        )
-        return 2
+        try:
+            compared = compare_run_manifests(args.runs, args.output)
+        except (OSError, TypeError, ValueError) as exc:
+            print(f"Compare error: {exc}", file=sys.stderr)
+            return 2
+        for record in compared.records:
+            print(
+                f"{record.mode}: ADE={record.ade:.6f}m FDE={record.fde:.6f}m "
+                f"samples={record.sample_count}"
+            )
+        print(f"comparison={compared.figure_path}")
+        return 0
     raise ValueError(f"Unsupported command: {args.command}")
 
 

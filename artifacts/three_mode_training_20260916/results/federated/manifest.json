@@ -77730,13 +77730,15 @@
   "schema_version": 2,
   "status": "completed",
   "summary": {
-    "ade": 1.273000534734215,
-    "artifact_paths": {},
+    "artifacts": {},
     "code_sha": "da360341570941e38f532069c1aac76e477553bb",
     "coordinate_unit": "meter",
     "dataset": "highd",
     "error": null,
-    "fde": 2.9025821628624837,
+    "metrics": {
+      "ade": 1.273000534734215,
+      "fde": 2.9025821628624837
+    },
     "mode": "federated",
     "model": "lstm_encoder_decoder",
     "run_id": "highd-full-20-federated-gpu-20260916:global",
@@ -77745,6 +77747,8 @@
     "seed": 42,
     "split_id": "highd-split-0c1f1e8a84f896a6",
     "status": "completed",
-    "total_seconds": 2706.4080767999694
+    "timing_seconds": {
+      "total": 2706.4080767999694
+    }
   }
 }

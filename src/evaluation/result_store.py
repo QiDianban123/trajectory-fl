@@ -135,6 +135,52 @@ def write_json(record: ResultRecord, path: str | Path) -> Path:
     return destination
 
 
+def result_record_from_dict(payload: Mapping[str, object]) -> ResultRecord:
+    """Load canonical JSON, while accepting the historical flat S3 summary shape."""
+
+    if not isinstance(payload, Mapping):
+        raise ValueError("result record must be a mapping")
+    metrics = payload.get("metrics")
+    if metrics is None:
+        metrics = {"ade": payload.get("ade"), "fde": payload.get("fde")}
+    if not isinstance(metrics, Mapping):
+        raise ValueError("result record metrics must be a mapping")
+    timing = payload.get("timing_seconds")
+    if timing is None:
+        timing = {"total": payload.get("total_seconds")}
+    if not isinstance(timing, Mapping):
+        raise ValueError("result record timing_seconds must be a mapping")
+    artifacts = payload.get("artifacts", payload.get("artifact_paths", {}))
+    if not isinstance(artifacts, Mapping):
+        raise ValueError("result record artifacts must be a mapping")
+    required = ("run_id", "code_sha", "seed", "split_id", "mode", "sample_count")
+    missing = [key for key in required if key not in payload]
+    if missing:
+        raise ValueError(f"result record is missing fields: {', '.join(missing)}")
+    if "ade" not in metrics or "fde" not in metrics:
+        raise ValueError("result record metrics require ade and fde")
+    if "total" not in timing:
+        raise ValueError("result record timing_seconds requires total")
+    return ResultRecord(
+        run_id=payload["run_id"],  # type: ignore[arg-type]
+        code_sha=payload["code_sha"],  # type: ignore[arg-type]
+        seed=payload["seed"],  # type: ignore[arg-type]
+        split_id=payload["split_id"],  # type: ignore[arg-type]
+        mode=payload["mode"],  # type: ignore[arg-type]
+        sample_count=payload["sample_count"],  # type: ignore[arg-type]
+        ade=metrics["ade"],  # type: ignore[arg-type]
+        fde=metrics["fde"],  # type: ignore[arg-type]
+        total_seconds=timing["total"],  # type: ignore[arg-type]
+        artifact_paths=artifacts,  # type: ignore[arg-type]
+        status=payload.get("status", "completed"),  # type: ignore[arg-type]
+        error=payload.get("error"),  # type: ignore[arg-type]
+        dataset=payload.get("dataset", "highd"),  # type: ignore[arg-type]
+        model=payload.get("model", "lstm_encoder_decoder"),  # type: ignore[arg-type]
+        schema_version=payload.get("schema_version", 1),  # type: ignore[arg-type]
+        coordinate_unit=payload.get("coordinate_unit", PHYSICAL_COORDINATE_UNIT),  # type: ignore[arg-type]
+    )
+
+
 def write_csv(records: Iterable[ResultRecord], path: str | Path) -> Path:
     """Write a flat CSV view derived from the same ResultRecord objects."""
 
@@ -174,11 +220,9 @@ def write_csv(records: Iterable[ResultRecord], path: str | Path) -> Path:
 class ResultStore(Protocol):
     """Minimal storage boundary for future experiment runners."""
 
-    def save_json(self, record: ResultRecord, path: str | Path) -> Path:
-        ...
+    def save_json(self, record: ResultRecord, path: str | Path) -> Path: ...
 
-    def save_csv(self, records: Iterable[ResultRecord], path: str | Path) -> Path:
-        ...
+    def save_csv(self, records: Iterable[ResultRecord], path: str | Path) -> Path: ...
 
 
 def _prepare_path(path: str | Path) -> Path:

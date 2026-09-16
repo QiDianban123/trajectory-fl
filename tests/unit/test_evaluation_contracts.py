@@ -9,7 +9,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from src.evaluation.result_store import CSV_FIELDS, ResultRecord, write_csv, write_json
+from src.evaluation.result_store import (
+    CSV_FIELDS,
+    ResultRecord,
+    result_record_from_dict,
+    write_csv,
+    write_json,
+)
 from src.evaluation.visualization import (
     plot_convergence,
     plot_mode_comparison,
@@ -53,6 +59,20 @@ def test_result_serialization_writes_json_and_flat_csv(tmp_path: Path) -> None:
     assert "trajectory.png" in rows[0]["artifact_paths"]
 
 
+def test_result_reader_accepts_canonical_and_historical_flat_summary() -> None:
+    canonical = _record().to_dict()
+    assert result_record_from_dict(canonical) == _record()
+
+    historical = {
+        **_record().__dict__,
+        "artifact_paths": {"trajectory": "figures/trajectory.png"},
+    }
+    assert result_record_from_dict(historical) == _record()
+
+    with pytest.raises(ValueError, match="metrics require ade and fde"):
+        result_record_from_dict({**canonical, "metrics": {"ade": 1.0}})
+
+
 def test_result_record_rejects_non_meter_or_invalid_mode() -> None:
     with pytest.raises(ValueError, match="physical coordinates in meters"):
         ResultRecord(**{**_record().__dict__, "coordinate_unit": "normalized"})
@@ -60,9 +80,7 @@ def test_result_record_rejects_non_meter_or_invalid_mode() -> None:
         ResultRecord(**{**_record().__dict__, "mode": "smoke"})
     with pytest.raises(ValueError, match="failed result records"):
         ResultRecord(**{**_record().__dict__, "status": "failed"})
-    failed = ResultRecord(
-        **{**_record().__dict__, "status": "failed", "error": "upload failed"}
-    )
+    failed = ResultRecord(**{**_record().__dict__, "status": "failed", "error": "upload failed"})
     assert failed.to_dict()["error"] == "upload failed"
     failed_without_samples = ResultRecord(
         **{

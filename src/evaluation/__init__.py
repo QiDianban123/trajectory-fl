@@ -11,6 +11,7 @@ from src.evaluation.centralized import (
     evaluate_prediction_arrays,
     inverse_transform_batch,
 )
+from src.evaluation.comparison import ComparisonOutput, compare_run_manifests
 from src.evaluation.data_diagnostics import (
     diagnostic_file_stem,
     generate_data_diagnostic_figures,
@@ -30,7 +31,13 @@ from src.evaluation.federated_results import (
 )
 from src.evaluation.metrics import ade, compute_metrics, fde
 from src.evaluation.prediction import PredictionCollection, collect_predictions
-from src.evaluation.result_store import ResultRecord, ResultStore, write_csv, write_json
+from src.evaluation.result_store import (
+    ResultRecord,
+    ResultStore,
+    result_record_from_dict,
+    write_csv,
+    write_json,
+)
 from src.evaluation.visualization import (
     plot_convergence,
     plot_loss_curve,
@@ -50,6 +57,7 @@ __all__ = [
     "ResultRecord",
     "ClientResultRecord",
     "ComparisonIdentity",
+    "ComparisonOutput",
     "FairnessRecord",
     "RoundRecord",
     "ResultStore",
@@ -71,9 +79,11 @@ __all__ = [
     "plot_raw_cleaned_trajectories",
     "plot_trajectory",
     "plot_truth_trajectory",
+    "result_record_from_dict",
     "write_csv",
     "write_json",
     "compare_modes",
+    "compare_run_manifests",
     "plot_round_metrics",
     "summarize_client_results",
 ]

@@ -1439,7 +1439,7 @@ def _manifest_payload(
         "fairness": fairness.to_dict() if fairness else None,
         "clients": [records[key].to_dict() for key in sorted(records)],
         "rounds": [item.to_dict() for item in sorted(rounds, key=lambda item: item.round_index)],
-        "summary": dict(summary.__dict__) if summary else None,
+        "summary": summary.to_dict() if summary else None,
         "artifacts": dict(sorted(artifacts.items())),
     }
 
