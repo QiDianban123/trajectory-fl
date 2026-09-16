@@ -21,6 +21,7 @@ from src.data.partition import (
     equal_width_edges,
     partition_train_groups,
     region_occupancy,
+    weighted_sample_edges,
 )
 
 
@@ -51,6 +52,22 @@ def test_partition_config_from_mapping_converts_edge_list() -> None:
         {"num_clients": 3, "axis": "x", "region_edges": [0.0, 10.0, 20.0, 30.0]}
     )
     assert config.region_edges == (0.0, 10.0, 20.0, 30.0)
+
+
+def test_partition_config_accepts_target_sample_ratios() -> None:
+    config = PartitionConfig.from_mapping(
+        {"num_clients": 3, "target_sample_ratios": [0.2, 0.3, 0.5]}
+    )
+    assert config.target_sample_ratios == (0.2, 0.3, 0.5)
+
+
+def test_partition_config_rejects_edges_with_target_ratios() -> None:
+    with pytest.raises(PartitionError, match="cannot be combined"):
+        PartitionConfig(
+            num_clients=2,
+            region_edges=(0.0, 5.0, 10.0),
+            target_sample_ratios=(0.4, 0.6),
+        )
 
 
 def test_partition_config_rejects_illegal_client_counts() -> None:
@@ -149,6 +166,22 @@ def test_equal_width_edges_reject_degenerate_or_illegal_inputs() -> None:
         equal_width_edges(5.0, 4.0, 5)
     with pytest.raises(PartitionError, match="num_clients"):
         equal_width_edges(0.0, 100.0, 0)
+
+
+def test_weighted_sample_edges_keep_spatial_groups_near_unequal_targets() -> None:
+    groups = [
+        _group(index, float(index), float(index), sample_count=10)
+        for index in range(1, 21)
+    ]
+    ratios = (0.15, 0.175, 0.2, 0.225, 0.25)
+    edges = weighted_sample_edges(groups, ratios)
+    manifest = partition_train_groups(
+        groups, PartitionConfig(num_clients=5, target_sample_ratios=ratios)
+    )
+    assert manifest.region_edges == edges
+    assert [client.sample_count for client in manifest.clients] == [30, 30, 40, 50, 50]
+    assert manifest.totals() == (20, 200)
+    check_partition_invariants(manifest, groups)
 
 
 def test_region_boundary_values_map_to_the_right_region() -> None:

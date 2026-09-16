@@ -40,9 +40,16 @@ def test_client_factory_creates_independent_models_and_local_epoch_trainers(conf
     )
 
     trainer = build_isolated_client_trainer(
-        "rsu_01", model_config=model_config, seed=42, split_id="highd-split-42", local_epochs=3
+        "rsu_01",
+        model_config=model_config,
+        seed=42,
+        split_id="highd-split-42",
+        local_epochs=3,
+        device="auto",
     )
     assert trainer.config.epochs == 3
+    assert trainer.config.device == "auto"
+    assert trainer.device.type == ("cuda" if torch.cuda.is_available() else "cpu")
     assert model_config["training"]["epochs"] == 1
 
     invalid = {key: value.to(torch.float64) for key, value in baseline.state.items()}

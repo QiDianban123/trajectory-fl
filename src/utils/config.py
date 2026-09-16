@@ -257,6 +257,27 @@ def _validate_partition(partition: Mapping[str, Any]) -> None:
     _non_empty_string(partition["client_id_prefix"], "partition.client_id_prefix")
     _positive_int(partition["min_samples_per_client"], "partition.min_samples_per_client")
 
+    target_ratios = partition.get("target_sample_ratios")
+    if target_ratios is not None:
+        if partition["region_edges"] is not None:
+            raise ConfigError(
+                "partition.target_sample_ratios cannot be combined with explicit region_edges"
+            )
+        if not isinstance(target_ratios, list) or len(target_ratios) != partition["num_clients"]:
+            raise ConfigError(
+                "partition.target_sample_ratios must contain exactly num_clients values"
+            )
+        for index, ratio in enumerate(target_ratios):
+            if (
+                isinstance(ratio, bool)
+                or not isinstance(ratio, (int, float))
+                or not isfinite(ratio)
+                or ratio <= 0
+            ):
+                raise ConfigError(
+                    f"partition.target_sample_ratios[{index}] must be a positive finite number"
+                )
+
     num_clients = partition["num_clients"]
     region_edges = partition["region_edges"]
     if region_edges is None:

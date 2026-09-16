@@ -50,6 +50,7 @@ def _write_data_config(tmp_path: Path, config_bundle: dict[str, dict[str, object
     dataset["raw_dir"] = _relative(raw_dir)
     dataset["processed_dir"] = _relative(tmp_path / "processed")
     partition["num_clients"] = 3
+    partition["target_sample_ratios"] = None
     path = tmp_path / "data.yaml"
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     return path

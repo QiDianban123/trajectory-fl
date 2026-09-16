@@ -75,6 +75,7 @@ class LocalOnlyRunRequest:
     local_epochs: int
     planned_budget: Mapping[str, object]
     evaluation_factory: EvaluationFactory
+    device: str = "cpu"
     model_factory: ModelFactory = create_model_from_config
     trainer_factory: TrainerFactory = build_isolated_client_trainer
     code_sha: str = "unknown"
@@ -96,6 +97,7 @@ class FederatedRunRequest:
     clients_per_round: int
     planned_budget: Mapping[str, object]
     evaluation_factory: EvaluationFactory
+    device: str = "cpu"
     model_factory: ModelFactory = create_model_from_config
     trainer_factory: TrainerFactory = build_isolated_client_trainer
     selector: Any = field(default_factory=DeterministicClientSelector)
@@ -796,6 +798,7 @@ def _build_adapter(request: Any, client_data: ClientDataLoaders) -> tuple[Any, L
         seed=seed,
         split_id=request.client_loaders.split_id,
         local_epochs=request.local_epochs,
+        device=request.device,
     )
     adapter = LocalTrainerAdapter(
         client_data.client_id,

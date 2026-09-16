@@ -13,6 +13,7 @@
 5. 只用 train split 的物理坐标拟合 `TrainingCoordinateScaler`。validation/test 只调用 `transform`。
 6. `build_samples` 生成标准 `TrajectorySample`：`history[T_h, 2]`、`future[T_f, 2]`，均为有限 `float32` 标准化坐标，并携带数据版本、车辆、frame 范围和 split 元数据。
 7. `build_datasets` 生成三个经过 `TrajectoryDataset` 校验的 split；`save_split_datasets` 保存可重建产物。
+8. 训练车辆按纵向坐标中点排序，并以配置的目标样本比例生成连续 RSU 空间边界；车辆不拆分、不复制，保持可解释 Non-IID 的同时限制客户端规模偏差。
 
 ## 持久化格式
 

@@ -110,6 +110,17 @@ class HighDAdapter:
         for file in files:
             frame = pd.read_csv(file)
             frame = self._map_columns(frame)
+            required = ["id", "frame", "x", "y"]
+            missing = [column for column in required if column not in frame.columns]
+            if missing:
+                raise ValueError(
+                    f"highD input is missing required columns: {', '.join(missing)}"
+                )
+            # The raw highD CSV includes many fields unused by the frozen
+            # trajectory contract.  Discard them before concatenating all
+            # recordings so full-dataset preparation remains memory bounded.
+            retained_columns = [*required, *(["recording_id"] if "recording_id" in frame else [])]
+            frame = frame.loc[:, retained_columns].copy()
             if "recording_id" not in frame:
                 frame["recording_id"] = file.stem.removesuffix("_tracks")
             frames.append(frame)
@@ -120,7 +131,9 @@ class HighDAdapter:
 
         from src.data.preprocess import TrainingCoordinateScaler, validate_split_assignments
 
-        frame = self._map_columns(raw.copy())
+        # ``load_raw`` has already normalized the required columns.  Keeping
+        # this as a view avoids a second multi-gigabyte copy for full highD.
+        frame = self._map_columns(raw)
         if "recording_id" not in frame:
             frame["recording_id"] = "inline"
         required = {"id", "frame", "x", "y", "recording_id"}

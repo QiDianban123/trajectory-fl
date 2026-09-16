@@ -26,6 +26,7 @@ def build_isolated_client_trainer(
     seed: int,
     split_id: str,
     local_epochs: int,
+    device: str = "cpu",
 ) -> TorchTrainer:
     """Return a fresh shared Trainer implementation configured for one client."""
 
@@ -39,7 +40,9 @@ def build_isolated_client_trainer(
     config["training"] = training
     return TorchTrainer(
         LSTMSeq2Seq.from_model_config(config["model"]).contract,
-        TorchTrainerConfig.from_config(config, seed=seed, split_id=split_id),
+        TorchTrainerConfig.from_config(
+            config, seed=seed, split_id=split_id, device=device
+        ),
     )
 
 

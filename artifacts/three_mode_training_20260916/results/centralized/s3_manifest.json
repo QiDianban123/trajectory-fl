@@ -1,0 +1,93 @@
+{
+  "artifacts": {
+    "loss_curve": "figures/loss_curve.png",
+    "metrics_csv": "metrics.csv",
+    "metrics_json": "metrics.json",
+    "trajectory": "figures/prediction_trajectory.png"
+  },
+  "clients": [],
+  "error": null,
+  "fairness": {
+    "actual_budget": {
+      "local_epochs": 20,
+      "rounds": 1,
+      "sample_visits": 10726580,
+      "selected_clients": [
+        "rsu_01",
+        "rsu_02",
+        "rsu_03",
+        "rsu_04",
+        "rsu_05"
+      ]
+    },
+    "comparable": true,
+    "data_version": "highd-6543695c145b3019",
+    "initial_state_id": "sha256:e0da1b9cfa6f42aed0823a6f54b6ee40fdcf0ad14ba02538c52fa020c97e80a5",
+    "metric_schema": "ade_fde_meter_v1",
+    "model_config_digest": "sha256:a52750f8b2de884fff5aee7bfb39a3891f9405d55df618e8b9af330a9f763501",
+    "partition_id": "partition-v1-69ea14c34c9561c4",
+    "planned_budget": {
+      "local_epochs": 20,
+      "rounds": 1,
+      "sample_visits": 10726580,
+      "selected_clients": [
+        "rsu_01",
+        "rsu_02",
+        "rsu_03",
+        "rsu_04",
+        "rsu_05"
+      ]
+    },
+    "reason": null,
+    "scaler_id": "scaler-v1-664a4662c128a965",
+    "seed": 42,
+    "split_id": "highd-split-0c1f1e8a84f896a6"
+  },
+  "identity": {
+    "data_version": "highd-6543695c145b3019",
+    "initial_state_id": "sha256:e0da1b9cfa6f42aed0823a6f54b6ee40fdcf0ad14ba02538c52fa020c97e80a5",
+    "metric_schema": "ade_fde_meter_v1",
+    "model_config_digest": "sha256:a52750f8b2de884fff5aee7bfb39a3891f9405d55df618e8b9af330a9f763501",
+    "partition_id": "partition-v1-69ea14c34c9561c4",
+    "scaler_id": "scaler-v1-664a4662c128a965",
+    "seed": 42,
+    "split_id": "highd-split-0c1f1e8a84f896a6"
+  },
+  "rounds": [],
+  "run_id": "highd-full-20-centralized-gpu-20260915",
+  "schema_version": 2,
+  "status": "completed",
+  "summary": {
+    "artifacts": {
+      "baseline_csv": "baseline/metrics.csv",
+      "baseline_json": "baseline/metrics.json",
+      "baseline_trajectory": "figures/baseline_trajectory.png",
+      "checkpoint": "checkpoints/best.pt",
+      "log": "train.log",
+      "loss_curve": "figures/loss_curve.png",
+      "metadata": "metadata.json",
+      "predictions": "predictions.npz",
+      "training_history": "training_history.json",
+      "trajectory": "figures/prediction_trajectory.png"
+    },
+    "code_sha": "da360341570941e38f532069c1aac76e477553bb",
+    "coordinate_unit": "meter",
+    "dataset": "highd",
+    "error": null,
+    "metrics": {
+      "ade": 1.5886782047188748,
+      "fde": 3.521341878716431
+    },
+    "mode": "centralized",
+    "model": "lstm_encoder_decoder",
+    "run_id": "highd-full-20-centralized-gpu-20260915",
+    "sample_count": 115301,
+    "schema_version": 1,
+    "seed": 42,
+    "split_id": "highd-split-0c1f1e8a84f896a6",
+    "status": "completed",
+    "timing_seconds": {
+      "total": 1926.5518875999987
+    }
+  }
+}

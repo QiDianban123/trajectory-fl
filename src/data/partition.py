@@ -24,7 +24,14 @@ DEFAULT_CLIENT_ID_PREFIX = "rsu_"
 MANIFEST_SCHEMA_VERSION = 1
 _SUPPORTED_AXES = ("x",)
 _CONFIG_KEYS = frozenset(
-    {"num_clients", "axis", "client_id_prefix", "region_edges", "min_samples_per_client"}
+    {
+        "num_clients",
+        "axis",
+        "client_id_prefix",
+        "region_edges",
+        "target_sample_ratios",
+        "min_samples_per_client",
+    }
 )
 
 
@@ -84,7 +91,8 @@ class PartitionConfig:
     """Validated schema for the spatial Non-IID partition (``data.yaml``).
 
     ``region_edges`` is ``None`` by default, which selects equal-width
-    regions over the observed longitudinal extent of the train groups.
+    regions over the observed longitudinal extent of the train groups unless
+    ``target_sample_ratios`` requests spatially contiguous weighted regions.
     Explicit edges must span the whole dataset extent and contain exactly
     ``num_clients + 1`` strictly increasing values.
     """
@@ -93,6 +101,7 @@ class PartitionConfig:
     axis: Axis = "x"
     client_id_prefix: str = DEFAULT_CLIENT_ID_PREFIX
     region_edges: tuple[float, ...] | None = None
+    target_sample_ratios: tuple[float, ...] | None = None
     min_samples_per_client: int = 1
 
     def __post_init__(self) -> None:
@@ -119,6 +128,22 @@ class PartitionConfig:
                     f"({self.num_clients + 1}), got {len(self.region_edges)}"
                 )
             _validate_edges(self.region_edges)
+        if self.target_sample_ratios is not None:
+            if self.region_edges is not None:
+                raise PartitionError(
+                    "target_sample_ratios cannot be combined with explicit region_edges"
+                )
+            if not isinstance(self.target_sample_ratios, tuple):
+                raise PartitionError("target_sample_ratios must be a tuple or None")
+            if len(self.target_sample_ratios) != self.num_clients:
+                raise PartitionError(
+                    "target_sample_ratios must contain exactly num_clients values "
+                    f"({self.num_clients}), got {len(self.target_sample_ratios)}"
+                )
+            for index, ratio in enumerate(self.target_sample_ratios):
+                _validate_finite_number(ratio, f"target_sample_ratios[{index}]")
+                if ratio <= 0:
+                    raise PartitionError("target_sample_ratios values must be positive")
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, object]) -> "PartitionConfig":
@@ -137,11 +162,21 @@ class PartitionConfig:
             ):
                 raise PartitionError("region_edges must be a list of numbers or null")
             region_edges = tuple(float(edge) for edge in region_edges)
+        target_sample_ratios = mapping.get("target_sample_ratios")
+        if target_sample_ratios is not None:
+            if (
+                isinstance(target_sample_ratios, bool)
+                or isinstance(target_sample_ratios, (str, bytes))
+                or not isinstance(target_sample_ratios, Sequence)
+            ):
+                raise PartitionError("target_sample_ratios must be a list of numbers or null")
+            target_sample_ratios = tuple(float(ratio) for ratio in target_sample_ratios)
         return cls(
             num_clients=mapping.get("num_clients", 5),
             axis=mapping.get("axis", "x"),
             client_id_prefix=mapping.get("client_id_prefix", DEFAULT_CLIENT_ID_PREFIX),
             region_edges=region_edges,
+            target_sample_ratios=target_sample_ratios,
             min_samples_per_client=mapping.get("min_samples_per_client", 1),
         )
 
@@ -215,6 +250,77 @@ def equal_width_edges(x_lo: float, x_hi: float, num_clients: int) -> tuple[float
     edges = [x_lo + step * width for step in range(num_clients + 1)]
     edges[-1] = float(x_hi)
     return tuple(edges)
+
+
+def weighted_sample_edges(
+    groups: Iterable[GroupExtent], target_ratios: Sequence[float]
+) -> tuple[float, ...]:
+    """Build contiguous spatial edges close to requested sample proportions.
+
+    Vehicle groups remain indivisible. Groups sharing the same midpoint also
+    remain together so every interior edge is strictly between coordinates.
+    """
+
+    ordered = sorted(
+        build_group_index(groups),
+        key=lambda group: (group.midpoint, *_group_sort_key(group)),
+    )
+    if not ordered:
+        raise PartitionError("at least one train group is required for weighted edges")
+    ratios = tuple(float(ratio) for ratio in target_ratios)
+    if not ratios or any(not math.isfinite(ratio) or ratio <= 0 for ratio in ratios):
+        raise PartitionError("target_sample_ratios values must be positive finite numbers")
+    total_samples = sum(group.sample_count for group in ordered)
+    if total_samples <= 0:
+        raise PartitionError("at least one effective train sample is required for weighted edges")
+
+    midpoint_weights: list[tuple[float, int]] = []
+    for group in ordered:
+        if midpoint_weights and group.midpoint == midpoint_weights[-1][0]:
+            midpoint, weight = midpoint_weights[-1]
+            midpoint_weights[-1] = (midpoint, weight + group.sample_count)
+        else:
+            midpoint_weights.append((group.midpoint, group.sample_count))
+    if len(midpoint_weights) < len(ratios):
+        raise PartitionError(
+            "not enough distinct spatial midpoints for target_sample_ratios clients"
+        )
+
+    cumulative: list[int] = []
+    running = 0
+    for _, weight in midpoint_weights:
+        running += weight
+        cumulative.append(running)
+    ratio_total = sum(ratios)
+    target_cumulative = []
+    running_ratio = 0.0
+    for ratio in ratios[:-1]:
+        running_ratio += ratio
+        target_cumulative.append(total_samples * running_ratio / ratio_total)
+
+    cuts: list[int] = []
+    previous_cut = 0
+    block_count = len(midpoint_weights)
+    for target_index, target in enumerate(target_cumulative):
+        remaining_clients = len(ratios) - target_index - 1
+        lower = previous_cut + 1
+        upper = block_count - remaining_clients
+        cut = min(
+            range(lower, upper + 1),
+            key=lambda count: (abs(cumulative[count - 1] - target), count),
+        )
+        cuts.append(cut)
+        previous_cut = cut
+
+    x_lo = min(group.x_min for group in ordered)
+    x_hi = max(group.x_max for group in ordered)
+    interior = [
+        (midpoint_weights[cut - 1][0] + midpoint_weights[cut][0]) / 2.0
+        for cut in cuts
+    ]
+    edges = (float(x_lo), *interior, float(x_hi))
+    _validate_edges(edges)
+    return edges
 
 
 @dataclass(frozen=True)
@@ -444,7 +550,11 @@ def partition_train_groups(
     degenerate = False
     if edges is None:
         if x_hi > x_lo:
-            edges = equal_width_edges(x_lo, x_hi, requested)
+            edges = (
+                weighted_sample_edges(ordered, config.target_sample_ratios)
+                if config.target_sample_ratios is not None
+                else equal_width_edges(x_lo, x_hi, requested)
+            )
         else:
             degenerate = True
             edges = (x_lo, x_hi)

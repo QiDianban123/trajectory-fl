@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "run_id": "highd-full-20-centralized-gpu-20260915",
+  "status": "completed",
+  "error": null,
+  "code_sha": "da360341570941e38f532069c1aac76e477553bb",
+  "seed": 42,
+  "split_id": "highd-split-0c1f1e8a84f896a6",
+  "mode": "centralized",
+  "dataset": "highd",
+  "model": "lstm_encoder_decoder",
+  "sample_count": 115301,
+  "coordinate_unit": "meter",
+  "metrics": {
+    "ade": 1.5886782047188748,
+    "fde": 3.521341878716431
+  },
+  "timing_seconds": {
+    "total": 1926.5518875999987
+  },
+  "artifacts": {
+    "checkpoint": "checkpoints/best.pt",
+    "training_history": "training_history.json",
+    "predictions": "predictions.npz",
+    "metadata": "metadata.json",
+    "log": "train.log",
+    "baseline_json": "baseline/metrics.json",
+    "baseline_csv": "baseline/metrics.csv",
+    "baseline_trajectory": "figures/baseline_trajectory.png",
+    "loss_curve": "figures/loss_curve.png",
+    "trajectory": "figures/prediction_trajectory.png"
+  }
+}

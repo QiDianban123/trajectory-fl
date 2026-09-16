@@ -177,7 +177,12 @@ def _run(bundle, c, mode, run_id, resume, sha):
         run_id=run_id,
         local_epochs=epochs,
         planned_budget=planned,
-        evaluation_factory=_evaluator(data.scaler, bundle["model"]),
+        evaluation_factory=_evaluator(
+            data.scaler,
+            bundle["model"],
+            device=bundle["experiment"]["execution"]["device"],
+        ),
+        device=bundle["experiment"]["execution"]["device"],
         config_snapshot=bundle,
         resume_checkpoint=resume,
         code_sha=sha,
@@ -218,12 +223,15 @@ def _budget(clients, s, mode):
     }
 
 
-def _evaluator(scaler, config):
+def _evaluator(scaler, config, *, device):
     def evaluate(_cid, model, client):
         trainer = TorchTrainer(
             model.contract,
             TorchTrainerConfig.from_config(
-                config, seed=0, split_id=client.datasets["test"].split_id
+                config,
+                seed=0,
+                split_id=client.datasets["test"].split_id,
+                device=device,
             ),
         )
         loss = trainer.evaluate(model, client.loaders["test"]).loss
