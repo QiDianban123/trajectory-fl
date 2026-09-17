@@ -9,6 +9,7 @@ import pytest
 from src.ui.capabilities import (
     UiCommandError,
     build_centralized_train_command,
+    build_prepare_data_command,
     build_s3_train_command,
     build_smoke_command,
     preflight_s3_fairness,
@@ -135,4 +136,46 @@ def test_s3_train_rejects_escape_and_resume_without_recovery(tmp_path: Path) -> 
             processed_dir="outputs/processed/split",
             run_id="safe",
             resume=True,
+        )
+
+
+def test_ui_builds_prepare_and_variable_round_commands(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    experiment = root / "configs/experiments/s3_federated_smoke.yaml"
+    experiment.write_text(
+        "run: {mode: federated, seed: 1}\n"
+        "three_mode: {mode_matrix: [centralized, local_only, federated], rounds: 1, "
+        "local_epochs: 1, clients_per_round: 5, metric_schema: ade_fde_meter_v1, "
+        "recovery: {boundary: complete_client_or_round}}\n",
+        encoding="utf-8",
+    )
+    raw = root / "outputs" / "ui-import-demo" / "raw"
+    raw.mkdir(parents=True)
+    (raw / "tracks.csv").write_text("id,frame,x,y\n1,0,0,0\n", encoding="utf-8")
+    prepare = build_prepare_data_command(
+        root,
+        raw_dir="outputs/ui-import-demo/raw",
+        processed_dir="outputs/ui-import-demo/processed",
+        output_root="outputs/ui-import-demo/preparation",
+        run_id="prepare",
+    )
+    assert prepare.argv[3] == "prepare-data"
+    assert prepare.timeout_seconds == 1800
+
+    train = build_s3_train_command(
+        root,
+        mode="federated",
+        processed_dir="outputs/processed/split",
+        run_id="demo-fed",
+        rounds=3,
+    )
+    assert train.argv[train.argv.index("--rounds") + 1] == "3"
+    assert train.timeout_seconds == 3600
+    with pytest.raises(UiCommandError, match="rounds"):
+        build_s3_train_command(
+            root,
+            mode="federated",
+            processed_dir="outputs/processed/split",
+            run_id="invalid-rounds",
+            rounds=0,
         )

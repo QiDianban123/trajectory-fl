@@ -52,6 +52,13 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--run-id")
     train_parser.add_argument("--seed", type=int)
     train_parser.add_argument("--epochs", type=int)
+    train_parser.add_argument(
+        "--rounds",
+        type=int,
+        help=(
+            "override three-mode training rounds; centralized/local-only use the same total passes"
+        ),
+    )
     train_parser.add_argument("--batch-size", type=int)
     train_parser.add_argument("--data-version")
     train_parser.add_argument("--split-id")
@@ -133,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
                 resume_checkpoint=args.resume_checkpoint,
                 seed=args.seed,
                 epochs=args.epochs,
+                rounds=args.rounds,
                 batch_size=args.batch_size,
             )
             if args.mode == "centralized" and "three_mode" not in bundle["experiment"]:
@@ -215,6 +223,7 @@ def _effective_train_bundle(
     resume_checkpoint: Path | None,
     seed: int | None,
     epochs: int | None,
+    rounds: int | None,
     batch_size: int | None,
 ) -> dict[str, dict[str, object]]:
     effective = deepcopy(bundle)
@@ -239,12 +248,20 @@ def _effective_train_bundle(
             if value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
             training[name] = value
+    if rounds is not None:
+        if rounds <= 0:
+            raise ValueError("rounds must be a positive integer")
+        three_mode = effective["experiment"].get("three_mode")
+        if not isinstance(three_mode, dict):
+            raise ValueError("rounds can only override a three-mode experiment")
+        three_mode["rounds"] = rounds
     effective["experiment"]["runtime"] = {
         "run_id": run_id,
         "processed_dir": str(processed_dir),
         "resume_checkpoint": str(resume_checkpoint) if resume_checkpoint is not None else None,
         "seed": seed,
         "epochs": epochs,
+        "rounds": rounds,
         "batch_size": batch_size,
     }
     return effective

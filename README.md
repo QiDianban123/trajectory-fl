@@ -134,6 +134,12 @@ python scripts\run_ui.py
 参数数组调用受控 CLI，页面不接受任意 shell 命令；Centralized、Local-only、Federated 单模式
 操作使用 S3 小样本配置，正式 20-pass 结果保持只读。
 
+页面顶部的“现场演示工作台”提供完整教学流程：上传一个或多个 highD 兼容 CSV，自动完成
+字段检查、轨迹清洗、车辆级训练/验证/测试划分、归一化和 5-RSU 分区，然后选择 1—100 轮执行
+Centralized、Local-only 或 Federated 训练。训练结束后，页面会展示 ADE/FDE；Centralized 展示
+损失曲线和预测轨迹，Local-only 展示各 RSU 结果，Federated 展示逐轮损失与 ADE/FDE 收敛曲线。
+上传文件只写入 `outputs/ui-import-*`，不会覆盖原始数据或正式归档。
+
 ## S3-G 三模式编排边界
 
 `src.experiments` 公开 `LocalOnlyExperiment`、`FederatedExperiment` 及对应请求/结果类型。

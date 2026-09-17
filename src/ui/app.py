@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import streamlit as st
 
 from src.ui.capabilities import (
     UiCommandError,
+    build_prepare_data_command,
     build_s3_train_command,
     build_smoke_command,
     build_three_mode_smoke_command,
@@ -16,6 +20,7 @@ from src.ui.capabilities import (
     s3_capabilities,
 )
 from src.ui.command_runner import CommandResult, CommandRunner, UiRunState
+from src.ui.data_import import find_processed_summary, save_uploaded_csvs
 from src.ui.run_index import (
     FinalArchiveSummary,
     RunSummary,
@@ -41,7 +46,7 @@ def main() -> None:
     _status_bar(archive, output_runs)
     capabilities = s3_capabilities()
     with st.sidebar:
-        st.header("运行参数")
+        st.header("高级操作")
         action = st.radio(
             "快捷操作",
             [item.key for item in capabilities],
@@ -56,6 +61,7 @@ def main() -> None:
             st.code(command.preview, language="text")
             if st.button("执行受控操作", type="primary", width="stretch"):
                 _run_command(command)
+    _demo_workbench()
     _final_results(archive)
     _command_console()
     _runs_and_results(output_runs, archive)
@@ -97,6 +103,7 @@ def _build_command(action: str):
     processed_dir = st.selectbox("Processed 数据", processed_options)
     mode = action.removesuffix("_train").removesuffix("_resume")
     run_id = st.text_input("run_id", value=f"{mode}-ui-{int(time.time())}")
+    rounds = st.number_input("训练轮数", min_value=1, max_value=100, value=1, step=1)
     try:
         if action == "centralized_train":
             preflight = preflight_s3_fairness(
@@ -104,9 +111,13 @@ def _build_command(action: str):
                 mode="centralized",
                 experiment_config="configs/experiments/s3_centralized_smoke.yaml",
             )
-            _show_fairness(preflight)
+            _show_fairness(preflight, rounds=int(rounds))
             return build_s3_train_command(
-                PROJECT_ROOT, mode="centralized", processed_dir=processed_dir, run_id=run_id
+                PROJECT_ROOT,
+                mode="centralized",
+                processed_dir=processed_dir,
+                run_id=run_id,
+                rounds=int(rounds),
             )
         if action in ("local_only_train", "federated_train"):
             preflight = preflight_s3_fairness(
@@ -114,9 +125,13 @@ def _build_command(action: str):
                 mode=mode,
                 experiment_config=f"configs/experiments/s3_{mode}_smoke.yaml",
             )
-            _show_fairness(preflight)
+            _show_fairness(preflight, rounds=int(rounds))
             return build_s3_train_command(
-                PROJECT_ROOT, mode=mode, processed_dir=processed_dir, run_id=run_id
+                PROJECT_ROOT,
+                mode=mode,
+                processed_dir=processed_dir,
+                run_id=run_id,
+                rounds=int(rounds),
             )
         if action == "resume":
             selected_mode = st.selectbox("恢复模式", ("local_only", "federated"))
@@ -125,6 +140,7 @@ def _build_command(action: str):
                 mode=selected_mode,
                 processed_dir=processed_dir,
                 run_id=run_id,
+                rounds=int(rounds),
                 resume=True,
             )
         raise UiCommandError("未注册的 UI 操作")
@@ -133,14 +149,155 @@ def _build_command(action: str):
         return None
 
 
-def _run_command(command) -> None:
-    result = CommandRunner(PROJECT_ROOT).run(command)
+def _run_command(command, *, announce: bool = True) -> CommandResult:
+    with st.spinner("正在执行，请勿关闭页面……"):
+        result = CommandRunner(PROJECT_ROOT).run(command)
     st.session_state["ui_run_state"] = UiRunState(command.run_id, result.state, result)
     st.session_state["last_result"] = result
-    if result.succeeded:
+    if result.succeeded and announce:
         st.success(f"操作完成，退出码 {result.exit_code}")
-    else:
+    elif not result.succeeded and announce:
         st.error(f"操作失败，退出码 {result.exit_code}")
+    return result
+
+
+def _demo_workbench() -> None:
+    st.header("现场演示工作台")
+    st.caption("按顺序完成：导入 CSV → 自动清洗与划分 → 选择轮数训练 → 查看结果图。")
+    with st.container(border=True):
+        st.subheader("1 · 导入并处理轨迹数据")
+        uploads = st.file_uploader(
+            "选择一个或多个 highD 轨迹 CSV",
+            type=("csv",),
+            accept_multiple_files=True,
+            help=(
+                "每个文件必须包含 id、frame、x、y，亦接受 Track ID、Frame ID、"
+                "x Position、y Position。至少需要 3 辆车，每条有效轨迹至少 200 帧。"
+            ),
+        )
+        st.caption("上传内容只保存在本项目 outputs/ 下；原始文件不会被覆盖。")
+        if st.button("导入并开始预处理", type="primary", disabled=not uploads):
+            import_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-") + uuid4().hex[:8]
+            try:
+                imported = save_uploaded_csvs(PROJECT_ROOT, uploads, import_id=import_id)
+                command = build_prepare_data_command(
+                    PROJECT_ROOT,
+                    raw_dir=imported.raw_dir.relative_to(PROJECT_ROOT).as_posix(),
+                    processed_dir=imported.processed_root.relative_to(PROJECT_ROOT).as_posix(),
+                    output_root=imported.preparation_root.relative_to(PROJECT_ROOT).as_posix(),
+                    run_id="prepare",
+                )
+                result = _run_command(command, announce=False)
+                if not result.succeeded:
+                    st.error("数据预处理失败，请展开下方命令输出查看原因。")
+                else:
+                    summary = find_processed_summary(imported.processed_root)
+                    st.session_state["demo_processed_dir"] = summary.processed_dir.relative_to(
+                        PROJECT_ROOT
+                    ).as_posix()
+                    st.session_state["demo_processed_selection"] = st.session_state[
+                        "demo_processed_dir"
+                    ]
+                    st.success(
+                        f"已导入 {imported.file_count} 个文件并完成预处理，"
+                        f"共 {imported.total_bytes / 1024 / 1024:.2f} MiB。"
+                    )
+            except (OSError, UiCommandError, ValueError) as exc:
+                st.error(f"数据导入失败：{exc}")
+
+        processed_options = _processed_options()
+        if not processed_options:
+            st.info("还没有可训练的数据。请先上传 CSV，或在高级操作中运行匿名 smoke。")
+            return
+        preferred = st.session_state.get("demo_processed_dir")
+        default_index = processed_options.index(preferred) if preferred in processed_options else 0
+        processed_dir = st.selectbox(
+            "选择已处理数据",
+            processed_options,
+            index=default_index,
+            key="demo_processed_selection",
+        )
+        _show_processed_summary(PROJECT_ROOT / processed_dir)
+
+    with st.container(border=True):
+        st.subheader("2 · 设置训练并查看图表")
+        left, middle, right = st.columns(3)
+        mode = left.selectbox(
+            "训练模式",
+            ("centralized", "local_only", "federated"),
+            format_func=_mode_label,
+            key="demo_mode",
+        )
+        rounds = middle.number_input(
+            "训练轮数",
+            min_value=1,
+            max_value=100,
+            value=3,
+            step=1,
+            key="demo_rounds",
+            help="Centralized/Local-only 使用相同总训练遍数；Federated 表示通信轮数。",
+        )
+        default_run_id = f"demo-{mode}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        run_id = right.text_input("本次训练名称", value=default_run_id, key="demo_run_id")
+        st.caption(
+            "为了课堂演示，建议先选择 1–3 轮和较小数据集；正式归档结果不会被本次演示覆盖。"
+        )
+        try:
+            command = build_s3_train_command(
+                PROJECT_ROOT,
+                mode=mode,
+                processed_dir=processed_dir,
+                run_id=run_id,
+                rounds=int(rounds),
+            )
+            st.code(command.preview, language="text")
+        except (UiCommandError, ValueError) as exc:
+            command = None
+            st.warning(str(exc))
+        if st.button("开始演示训练", type="primary", disabled=command is None):
+            assert command is not None
+            result = _run_command(command, announce=False)
+            if result.succeeded:
+                st.session_state["demo_last_run_dir"] = run_id
+                st.success("训练完成，结果和图表已在下方生成。")
+            else:
+                st.error("训练失败，请查看命令输出。")
+
+        last_run_dir = st.session_state.get("demo_last_run_dir")
+        if isinstance(last_run_dir, str):
+            run = next(
+                (item for item in discover_runs(PROJECT_ROOT) if item.run_dir.name == last_run_dir),
+                None,
+            )
+            if run is not None:
+                st.subheader("本次演示结果")
+                _show_metrics(run)
+                _show_artifacts(run)
+
+
+def _show_processed_summary(processed_dir: Path) -> None:
+    try:
+        summary = find_processed_summary(processed_dir.parent)
+    except ValueError:
+        return
+    columns = st.columns(4)
+    columns[0].metric("输入行数", summary.input_rows)
+    columns[1].metric("有效轨迹", summary.valid_tracks)
+    columns[2].metric("剔除轨迹", summary.rejected_tracks)
+    columns[3].metric("训练样本", summary.sample_counts["train"])
+    split_rows = [
+        {"数据划分": name, "样本数": count} for name, count in summary.sample_counts.items()
+    ]
+    client_rows = [
+        {"RSU": name, "训练样本数": count} for name, count in summary.client_counts.items()
+    ]
+    chart_left, chart_right = st.columns(2)
+    chart_left.bar_chart(split_rows, x="数据划分", y="样本数")
+    chart_right.bar_chart(client_rows, x="RSU", y="训练样本数")
+    st.caption(
+        f"data_version: {summary.data_version} · split_id: {summary.split_id} · "
+        "训练/验证/测试按车辆分组，互不重叠。"
+    )
 
 
 def _command_console() -> None:
@@ -252,6 +409,72 @@ def _show_metrics(run: RunSummary) -> None:
     ]
     if images:
         st.image([str(path) for path in images], caption=[path.name for path in images])
+    _show_training_charts(run)
+
+
+def _show_training_charts(run: RunSummary) -> None:
+    metric_rows = [
+        {"指标": "ADE", "误差（米）": run.ade},
+        {"指标": "FDE", "误差（米）": run.fde},
+    ]
+    if run.ade is not None and run.fde is not None:
+        st.bar_chart(metric_rows, x="指标", y="误差（米）")
+    if run.mode == "centralized":
+        history_path = run.artifacts.get("training_history")
+        history = _read_json_file(history_path) if history_path is not None else None
+        epochs = history.get("epochs") if isinstance(history, dict) else None
+        if isinstance(epochs, list):
+            rows = [
+                {
+                    "轮次": int(item.get("epoch", index)) + 1,
+                    "训练损失": item.get("train_loss"),
+                    "验证损失": item.get("validation_loss"),
+                }
+                for index, item in enumerate(epochs)
+                if isinstance(item, dict)
+            ]
+            if rows:
+                st.line_chart(rows, x="轮次", y=["训练损失", "验证损失"])
+    elif run.mode == "local_only":
+        rows = [
+            {
+                "RSU": item.get("client_id"),
+                "ADE（米）": item.get("ade"),
+                "FDE（米）": item.get("fde"),
+            }
+            for item in run.clients
+            if item.get("status") == "completed"
+            and isinstance(item.get("ade"), (int, float))
+            and isinstance(item.get("fde"), (int, float))
+        ]
+        if rows:
+            st.bar_chart(rows, x="RSU", y=["ADE（米）", "FDE（米）"])
+    elif run.mode == "federated":
+        rows = []
+        for item in run.rounds:
+            metrics = item.get("metrics")
+            if item.get("status") != "completed" or not isinstance(metrics, dict):
+                continue
+            rows.append(
+                {
+                    "轮次": int(item.get("round_index", len(rows))) + 1,
+                    "训练损失": metrics.get("train_loss"),
+                    "评价损失": metrics.get("evaluation_loss"),
+                    "ADE（米）": metrics.get("ade"),
+                    "FDE（米）": metrics.get("fde"),
+                }
+            )
+        if rows:
+            st.line_chart(rows, x="轮次", y=["训练损失", "评价损失"])
+            st.line_chart(rows, x="轮次", y=["ADE（米）", "FDE（米）"])
+
+
+def _read_json_file(path: Path) -> dict[str, object] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def _show_artifacts(run: RunSummary) -> None:
@@ -349,10 +572,13 @@ def _mode_label(mode: str) -> str:
     }.get(mode, mode)
 
 
-def _show_fairness(preflight) -> None:
+def _show_fairness(preflight, *, rounds: int | None = None) -> None:
+    fields = dict(preflight.fields)
+    if rounds is not None:
+        fields["rounds"] = rounds
     if preflight.allowed:
         st.success(preflight.reason)
-        st.json(preflight.fields, expanded=False)
+        st.json(fields, expanded=False)
     else:
         st.error(preflight.reason)
 

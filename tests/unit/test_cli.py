@@ -31,11 +31,13 @@ def test_train_rejects_unknown_mode(capsys: object) -> None:
 
 
 def test_train_default_run_id_uses_selected_mode(capsys: object, monkeypatch: object) -> None:
-    captured: dict[str, str] = {}
+    captured: dict[str, object] = {}
 
     def dispatch(*args: object, **kwargs: object) -> object:
-        del args
+        bundle = args[0]
+        assert isinstance(bundle, dict)
         captured["run_id"] = str(kwargs["run_id"])
+        captured["rounds"] = bundle["experiment"]["three_mode"]["rounds"]
         return SimpleNamespace(
             result=SimpleNamespace(
                 run_id=kwargs["run_id"],
@@ -54,11 +56,14 @@ def test_train_default_run_id_uses_selected_mode(capsys: object, monkeypatch: ob
                 "local_only",
                 "--experiment",
                 "configs/experiments/s3_local_only_smoke.yaml",
+                "--rounds",
+                "3",
             ]
         )
         == 0
     )
     assert captured["run_id"].startswith("local_only-")
+    assert captured["rounds"] == 3
     assert "status=completed" in capsys.readouterr().out  # type: ignore[attr-defined]
 
 

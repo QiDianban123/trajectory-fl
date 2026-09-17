@@ -45,7 +45,7 @@ def test_run_index_reads_result_facts_and_ignores_escape_artifacts(tmp_path: Pat
     assert len(runs) == 1
     assert runs[0].ade == 1.2
     assert runs[0].best_epoch == 2
-    assert set(runs[0].artifacts) == {"metrics"}
+    assert set(runs[0].artifacts) == {"metrics", "training_history"}
 
 
 def test_run_index_reads_s3_v2_summary_and_structured_facts(tmp_path: Path) -> None:

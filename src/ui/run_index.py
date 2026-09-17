@@ -215,6 +215,8 @@ def _read_run(manifest_path: Path) -> RunSummary | None:
                 resolved = resolver.resolve(relative_path)
                 if resolved is not None:
                     artifact_paths[name] = resolved
+    if history is not None:
+        artifact_paths.setdefault("training_history", run_dir / "training_history.json")
     candidate_facts = summary if manifest.get("schema_version") == 2 and summary else metrics
     facts: dict[str, object] = candidate_facts if isinstance(candidate_facts, dict) else {}
     metrics_values = facts.get("metrics", {})

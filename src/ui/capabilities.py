@@ -26,6 +26,7 @@ class CommandSpec:
     output_root: Path | None = None
     mode: Literal["centralized", "local_only", "federated"] | None = None
     resume: bool = False
+    timeout_seconds: int = 180
 
     @property
     def preview(self) -> str:
@@ -130,6 +131,7 @@ def build_s3_train_command(
     mode: Literal["centralized", "local_only", "federated"],
     processed_dir: str,
     run_id: str,
+    rounds: int = 1,
     resume: bool = False,
 ) -> CommandSpec:
     """Build one S3 allow-listed train command after read-only fairness preflight."""
@@ -140,6 +142,8 @@ def build_s3_train_command(
     if not preflight.allowed:
         raise UiCommandError(preflight.reason)
     validate_run_id(run_id)
+    if isinstance(rounds, bool) or not isinstance(rounds, int) or not 1 <= rounds <= 100:
+        raise UiCommandError("training rounds must be an integer from 1 to 100")
     processed = _safe_relative(root, processed_dir, "processed directory")
     if not processed.is_dir() or not any(
         processed.is_relative_to(candidate)
@@ -169,11 +173,71 @@ def build_s3_train_command(
         "outputs",
         "--run-id",
         run_id,
+        "--rounds",
+        str(rounds),
     ]
     if resume:
         argv.extend(("--resume-checkpoint", "checkpoints/recovery.json"))
     return CommandSpec(
-        f"{mode}_{'resume' if resume else 'train'}", tuple(argv), run_id, output, mode, resume
+        action=f"{mode}_{'resume' if resume else 'train'}",
+        argv=tuple(argv),
+        run_id=run_id,
+        output_root=output,
+        mode=mode,
+        resume=resume,
+        timeout_seconds=3600,
+    )
+
+
+def build_prepare_data_command(
+    project_root: str | Path,
+    *,
+    raw_dir: str,
+    processed_dir: str,
+    output_root: str,
+    run_id: str,
+) -> CommandSpec:
+    """Build a safe data-preparation command for CSV files imported through the UI."""
+
+    root = Path(project_root).resolve()
+    validate_run_id(run_id)
+    raw = _safe_relative(root, raw_dir, "raw directory")
+    processed = _safe_relative(root, processed_dir, "processed directory")
+    output = _safe_relative(root, output_root, "preparation output root")
+    allowed_root = root / "outputs"
+    if not raw.is_dir() or not raw.is_relative_to(allowed_root):
+        raise UiCommandError("raw directory must be an existing UI import under outputs")
+    if not any(raw.glob("*.csv")):
+        raise UiCommandError("raw directory contains no CSV files")
+    if not processed.is_relative_to(allowed_root) or processed.exists():
+        raise UiCommandError("processed directory must be a new directory under outputs")
+    if not output.is_relative_to(allowed_root) or (output / run_id).exists():
+        raise UiCommandError("preparation output must be a new run under outputs")
+    return CommandSpec(
+        action="prepare_data",
+        argv=(
+            sys.executable,
+            "-m",
+            "src.cli",
+            "prepare-data",
+            "--data",
+            "configs/data.yaml",
+            "--model",
+            "configs/model.yaml",
+            "--experiment",
+            "configs/experiments/smoke.yaml",
+            "--raw-dir",
+            raw.relative_to(root).as_posix(),
+            "--processed-dir",
+            processed.relative_to(root).as_posix(),
+            "--output-root",
+            output.relative_to(root).as_posix(),
+            "--run-id",
+            run_id,
+        ),
+        run_id=run_id,
+        output_root=output,
+        timeout_seconds=1800,
     )
 
 

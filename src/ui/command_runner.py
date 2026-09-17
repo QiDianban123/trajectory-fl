@@ -58,7 +58,7 @@ class CommandRunner:
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=180,
+                timeout=spec.timeout_seconds,
             )
             output = completed.stdout + completed.stderr
             return CommandResult(
@@ -73,7 +73,7 @@ class CommandRunner:
             output = (exc.stdout or "") + (exc.stderr or "")
             return CommandResult(
                 spec=spec,
-                stdout=output + "\nUI command timed out after 180 seconds.",
+                stdout=output + f"\nUI command timed out after {spec.timeout_seconds} seconds.",
                 exit_code=124,
                 started_at=started_at,
                 finished_at=datetime.now(timezone.utc).isoformat(),
