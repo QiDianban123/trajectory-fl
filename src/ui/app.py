@@ -1,4 +1,4 @@
-"""Streamlit S2 centralized experiment console."""
+"""Streamlit console for controlled training and authoritative final results."""
 
 from __future__ import annotations
 
@@ -16,19 +16,29 @@ from src.ui.capabilities import (
     s3_capabilities,
 )
 from src.ui.command_runner import CommandResult, CommandRunner, UiRunState
-from src.ui.run_index import RunSummary, discover_runs
+from src.ui.run_index import (
+    FinalArchiveSummary,
+    RunSummary,
+    comparison_error,
+    discover_final_archive,
+    discover_runs,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def main() -> None:
-    """Render the S3 controlled three-mode console."""
+    """Render the controlled three-mode console and retained final archive."""
 
     st.set_page_config(page_title="Trajectory-FL 控制台", page_icon="◈", layout="wide")
     _style()
-    st.title("S3 · 三模式实验控制台")
-    st.caption("仅执行生产 CLI；结果、RSU、轮次和公平性均从结构化 manifest 读取。")
-    _status_bar()
+    archive = discover_final_archive(PROJECT_ROOT)
+    output_runs = discover_runs(PROJECT_ROOT)
+    st.title("Trajectory-FL · 三模式训练与最终结果")
+    st.caption(
+        "训练操作使用受控 CLI；正式结论来自 FINAL_MANIFEST.json，运行细节来自结构化 manifest。"
+    )
+    _status_bar(archive, output_runs)
     capabilities = s3_capabilities()
     with st.sidebar:
         st.header("运行参数")
@@ -44,10 +54,11 @@ def main() -> None:
         if command is not None:
             st.caption("命令预览")
             st.code(command.preview, language="text")
-            if st.button("执行受控操作", type="primary", use_container_width=True):
+            if st.button("执行受控操作", type="primary", width="stretch"):
                 _run_command(command)
+    _final_results(archive)
     _command_console()
-    _runs_and_results()
+    _runs_and_results(output_runs, archive)
 
 
 def _style() -> None:
@@ -62,12 +73,12 @@ def _style() -> None:
     )
 
 
-def _status_bar() -> None:
+def _status_bar(archive: FinalArchiveSummary | None, runs: list[RunSummary]) -> None:
     columns = st.columns(4)
-    columns[0].metric("阶段", "S3 / MS4 核心")
-    columns[1].metric("后端", "健康")
-    columns[2].metric("允许模式", "三模式")
-    columns[3].metric("运行目录", "outputs/")
+    columns[0].metric("项目阶段", "S4 · 最终结果")
+    columns[1].metric("最终归档", "可用" if archive is not None else "未找到")
+    columns[2].metric("归档文件", archive.retained_file_count if archive is not None else 0)
+    columns[3].metric("本地运行", len(runs))
 
 
 def _build_command(action: str):
@@ -77,11 +88,11 @@ def _build_command(action: str):
     if action == "three_mode_smoke":
         return build_three_mode_smoke_command(PROJECT_ROOT)
     if action == "compare":
-        st.success("比较视图已在下方打开；它只使用已保存的可比较结构化运行。")
+        st.success("比较视图已在下方打开；请选择三个身份和预算一致的运行。")
         return None
     processed_options = _processed_options()
     if not processed_options:
-        st.warning("未找到已准备的 processed 数据。请先执行集中式 smoke。")
+        st.warning("未找到可训练的 processed 数据；可先运行 smoke 生成匿名样例数据。")
         return None
     processed_dir = st.selectbox("Processed 数据", processed_options)
     mode = action.removesuffix("_train").removesuffix("_resume")
@@ -146,11 +157,45 @@ def _command_console() -> None:
         st.info("尚未执行页面操作。页面不会自动启动训练。")
 
 
-def _runs_and_results() -> None:
-    st.subheader("已保存运行")
-    runs = discover_runs(PROJECT_ROOT)
+def _final_results(archive: FinalArchiveSummary | None) -> None:
+    st.header("正式最终结果")
+    if archive is None:
+        st.warning("未找到可读取的 FINAL_MANIFEST.json；下方仍可查看 outputs 中的运行。")
+        return
+    st.success("最终三模式结果已归档，可用于项目报告与演示。")
+    if not archive.provenance_verified:
+        st.info("历史训练来源例外已保留在 PROVENANCE.json；本页面不会将其显示为已验证。")
+    rows = _result_rows(list(archive.runs))
+    st.dataframe(rows, width="stretch", hide_index=True)
+    best = min(archive.runs, key=lambda item: item.ade if item.ade is not None else float("inf"))
+    identity = archive.runs[0].identity or {}
+    local_run = next(run for run in archive.runs if run.mode == "local_only")
+    columns = st.columns(4)
+    columns[0].metric("最佳模式（ADE）", _mode_label(best.mode))
+    columns[1].metric("最低 ADE", _format_number(best.ade, "m"))
+    columns[2].metric("训练样本访问", str(identity.get("training_sample_visits", "—")))
+    columns[3].metric("最终评价样本", str(best.sample_count or "—"))
+    st.caption(
+        f"data_version: {best.data_version or '—'} · split_id: {best.split_id} · "
+        f"seed: {best.seed} · RSU 客户端: {len(local_run.clients)}"
+    )
+    if archive.comparison_figure is not None:
+        st.image(str(archive.comparison_figure), caption="最终三模式 ADE / FDE 比较")
+    selected_mode = st.selectbox(
+        "查看最终模式详情",
+        [run.mode for run in archive.runs],
+        format_func=_mode_label,
+        key="final_mode_detail",
+    )
+    selected = next(run for run in archive.runs if run.mode == selected_mode)
+    _show_metrics(selected)
+    _show_artifacts(selected)
+
+
+def _runs_and_results(runs: list[RunSummary], archive: FinalArchiveSummary | None) -> None:
+    st.header("本地运行历史")
     if not runs:
-        st.info("尚未发现可展示的集中式运行。")
+        st.info("outputs/ 中尚未发现可展示的训练运行。")
         return
     modes = st.multiselect(
         "模式筛选",
@@ -166,7 +211,8 @@ def _runs_and_results() -> None:
     if not runs:
         st.info("当前筛选没有运行；失败和中断运行仍保留在结构化索引中。")
         return
-    _show_comparison(runs)
+    comparison_candidates = list(archive.runs) + runs if archive is not None else runs
+    _show_comparison(comparison_candidates)
     labels = [f"{run.run_id} · {run.status} · {run.mode}" for run in runs]
     selected = runs[labels.index(st.selectbox("选择运行", labels))]
     _show_metrics(selected)
@@ -174,6 +220,10 @@ def _runs_and_results() -> None:
 
 
 def _show_metrics(run: RunSummary) -> None:
+    if run.is_final:
+        st.caption("数据源：最终归档 FINAL_MANIFEST.json")
+    else:
+        st.caption("数据源：outputs/ 运行 manifest")
     columns = st.columns(5)
     columns[0].metric("ADE", _format_number(run.ade, "m"))
     columns[1].metric("FDE", _format_number(run.fde, "m"))
@@ -189,15 +239,17 @@ def _show_metrics(run: RunSummary) -> None:
         st.json(run.fairness, expanded=False)
     if run.clients:
         st.caption("客户端画像与指标来源：schema v2 manifest.clients；空/失败客户端保留原因。")
-        st.dataframe(list(run.clients), use_container_width=True)
+        st.dataframe(list(run.clients), width="stretch")
     if run.rounds:
         st.caption(
             "联邦时间线来源：schema v2 manifest.rounds；权重、global state 与失败不重新计算。"
         )
-        st.dataframe(list(run.rounds), use_container_width=True)
-    figure = run.run_dir / "figures" / "loss_curve.png"
-    trajectory = run.run_dir / "figures" / "prediction_trajectory.png"
-    images = [path for path in (figure, trajectory) if path.is_file()]
+        st.dataframe(list(run.rounds), width="stretch")
+    images = [
+        run.artifacts[name]
+        for name in ("loss_curve", "trajectory")
+        if name in run.artifacts and run.artifacts[name].is_file()
+    ]
     if images:
         st.image([str(path) for path in images], caption=[path.name for path in images])
 
@@ -212,7 +264,11 @@ def _show_artifacts(run: RunSummary) -> None:
                     continue
                 except OSError:
                     pass
-            st.caption(f"{name}: {path.relative_to(run.run_dir).as_posix()}")
+            try:
+                relative = path.relative_to(run.run_dir).as_posix()
+            except ValueError:
+                relative = path.name
+            st.caption(f"{name}: {relative}")
 
 
 def _processed_options() -> list[str]:
@@ -239,33 +295,58 @@ def _format_number(value: float | None, unit: str) -> str:
 
 
 def _show_comparison(runs: list[RunSummary]) -> None:
-    st.subheader("三模式结果表与比较")
-    rows = [
+    st.subheader("选择运行进行严格三模式比较")
+    selected: list[RunSummary] = []
+    columns = st.columns(3)
+    for column, mode in zip(columns, ("centralized", "local_only", "federated")):
+        choices = [run for run in runs if run.mode == mode]
+        if not choices:
+            st.info(f"没有 {_mode_label(mode)} 运行可供选择。")
+            return
+        choices.sort(key=lambda run: (not run.is_final, run.run_id), reverse=False)
+        labels = [_run_label(run) for run in choices]
+        chosen = column.selectbox(
+            _mode_label(mode), labels, key=f"comparison_{mode}", label_visibility="visible"
+        )
+        selected.append(choices[labels.index(chosen)])
+    reason = comparison_error(selected)
+    if reason is not None:
+        st.warning(f"当前选择不可比较：{reason}")
+        return
+    rows = _result_rows(selected)
+    st.dataframe(rows, width="stretch", hide_index=True)
+    st.bar_chart(rows, x="mode", y=["ADE (m)", "FDE (m)"], x_label="模式", y_label="误差（米）")
+
+
+def _result_rows(runs: list[RunSummary]) -> list[dict[str, object]]:
+    return [
         {
+            "mode": _mode_label(item.mode),
             "run_id": item.run_id,
-            "mode": item.mode,
             "status": item.status,
             "ADE (m)": item.ade,
             "FDE (m)": item.fde,
-            "elapsed (s)": item.total_seconds,
+            "耗时 (s)": item.total_seconds,
+            "评价样本": item.sample_count,
             "split_id": item.split_id,
             "seed": item.seed,
+            "来源": "最终归档" if item.is_final else "本地运行",
         }
         for item in runs
     ]
-    st.dataframe(rows, use_container_width=True)
-    complete = [
-        run
-        for run in runs
-        if run.status == "completed"
-        and run.ade is not None
-        and run.fairness is not None
-        and run.fairness.get("comparable") is True
-    ]
-    if complete:
-        st.bar_chart({run.mode: run.ade for run in complete}, x_label="mode", y_label="ADE (m)")
-    else:
-        st.info("没有可比较的完成记录；失败、缺失或公平性不符的运行仍在上表显示。")
+
+
+def _run_label(run: RunSummary) -> str:
+    prefix = "最终归档" if run.is_final else "本地运行"
+    return f"{prefix} · {run.run_id}"
+
+
+def _mode_label(mode: str) -> str:
+    return {
+        "centralized": "Centralized",
+        "local_only": "Local-only",
+        "federated": "Federated",
+    }.get(mode, mode)
 
 
 def _show_fairness(preflight) -> None:

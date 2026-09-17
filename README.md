@@ -121,7 +121,7 @@ python scripts\run_centralized_smoke.py
 python -m src.cli train --mode centralized --processed-dir data/processed/<split_id> --run-id centralized-001
 ```
 
-## S2 本地交互控制台
+## 本地交互控制台
 
 S2-UI-01 提供受控的 Streamlit 页面：
 
@@ -129,9 +129,10 @@ S2-UI-01 提供受控的 Streamlit 页面：
 python scripts\run_ui.py
 ```
 
-页面只开放已验收的 Centralized smoke 和 Centralized train，S3 的 Local-only/Federated
-操作会显示为禁用状态。命令预览使用参数数组生成，页面不接受任意 shell 命令；已保存的
-metrics、manifest、日志、checkpoint 和图表从 run 目录只读加载。
+页面展示 `FINAL_MANIFEST.json` 中的正式三模式结果、评价样本、训练访问量、RSU 客户端、
+联邦轮次、模型和比较图，并将 `outputs/` 中的本地运行单独列为运行历史。训练操作使用固定
+参数数组调用受控 CLI，页面不接受任意 shell 命令；Centralized、Local-only、Federated 单模式
+操作使用 S3 小样本配置，正式 20-pass 结果保持只读。
 
 ## S3-G 三模式编排边界
 
@@ -173,7 +174,7 @@ python -m src.cli compare --runs outputs/<centralized-run> outputs/<local-only-r
 比较入口会核验数据/划分、模型配置、seed、初始状态、指标口径、样本访问预算、客户端覆盖和
 评价样本数；失败或不可比较的运行返回退出码 2，不生成图表。
 
-## S3 三模式控制台（UI-1 候选）
+## 三模式控制台
 
 保持既有 Streamlit 启动入口：
 
@@ -182,5 +183,6 @@ python scripts\run_ui.py
 ```
 
 控制台使用白名单参数数组开放 Centralized、Local-only、Federated、三模式 smoke 和失败运行恢复。
-页面先显示 S3 配置公平性预检，生产 runner 会再次校验；结果、RSU、轮次和 artifact 仅从保存的
-manifest/JSON/CSV 读取。UI-1 不包含三模式比较图或发布功能。
+页面先显示配置公平性预检，生产 runner 会再次校验；结果、RSU、轮次和 artifact 仅从保存的
+manifest/JSON/CSV 读取。三模式比较必须由用户各选一个运行，页面会再次核验数据、模型、seed、
+初态、代码版本、评价样本和训练预算，拒绝把不同实验身份的结果混画在同一张图中。

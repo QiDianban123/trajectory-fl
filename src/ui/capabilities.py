@@ -1,4 +1,4 @@
-"""S2 capability registry and validated command construction."""
+"""UI capability registry and validated command construction."""
 
 from __future__ import annotations
 
@@ -43,14 +43,14 @@ class Capability:
 
 
 class CapabilityRegistry:
-    """S3 UI allow-list; every visible action has a fixed production entry point."""
+    """UI allow-list; every executable action has a fixed reviewed entry point."""
 
     def capabilities(self) -> tuple[Capability, ...]:
         return (
             Capability("centralized_smoke", "集中式 smoke", True, "匿名样例与生产 CLI"),
-            Capability("centralized_train", "Centralized", True, "生产三模式入口"),
-            Capability("local_only_train", "Local-only", True, "生产三模式入口"),
-            Capability("federated_train", "Federated", True, "生产三模式入口"),
+            Capability("centralized_train", "Centralized 小样本训练", True, "S3 smoke 配置"),
+            Capability("local_only_train", "Local-only 小样本训练", True, "S3 smoke 配置"),
+            Capability("federated_train", "Federated 小样本训练", True, "S3 smoke 配置"),
             Capability("three_mode_smoke", "三模式 smoke", True, "共享数据、初态与公平性 guard"),
             Capability("resume", "恢复失败运行", True, "仅正式 recovery.json 边界"),
             Capability("compare", "三模式比较", True, "只读比较已保存的可比较结构化运行"),
