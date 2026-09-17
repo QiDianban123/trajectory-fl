@@ -61,4 +61,5 @@ def test_streamlit_page_renders_authoritative_final_results() -> None:
     assert metrics["最终评价样本"] == "115301"
     assert any(item.value == "现场演示工作台" for item in page.header)
     assert any(item.label == "训练轮数" for item in page.number_input)
+    assert any(item.label == "保留本次训练成果" for item in page.checkbox)
     assert page.file_uploader[0].label == "选择一个或多个 highD 轨迹 CSV"

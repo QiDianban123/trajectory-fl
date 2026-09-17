@@ -132,6 +132,7 @@ def build_s3_train_command(
     processed_dir: str,
     run_id: str,
     rounds: int = 1,
+    output_root: str = "outputs",
     resume: bool = False,
 ) -> CommandSpec:
     """Build one S3 allow-listed train command after read-only fairness preflight."""
@@ -150,7 +151,9 @@ def build_s3_train_command(
         for candidate in (root / "data" / "processed", root / "outputs")
     ):
         raise UiCommandError("processed directory must be an existing allowed processed split")
-    output = resolve_within(root, "outputs")
+    output = _safe_relative(root, output_root, "output root")
+    if not output.is_relative_to(root / "outputs"):
+        raise UiCommandError("training output root must stay under outputs")
     run_dir = resolve_within(output, run_id)
     if resume:
         recovery = resolve_within(run_dir, "checkpoints/recovery.json")
@@ -170,7 +173,7 @@ def build_s3_train_command(
         "--processed-dir",
         processed.relative_to(root).as_posix(),
         "--output-root",
-        "outputs",
+        output.relative_to(root).as_posix(),
         "--run-id",
         run_id,
         "--rounds",

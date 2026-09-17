@@ -132,6 +132,17 @@ def test_incomplete_manifest_stays_visible_without_result_facts(tmp_path: Path) 
     assert (run.ade, run.fde, run.total_seconds, run.sample_count) == (None, None, None, None)
 
 
+def test_temporary_ui_runs_are_hidden_from_normal_history(tmp_path: Path) -> None:
+    run_dir = tmp_path / "outputs/.ui-temporary/demo"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"run_id": "demo", "split_id": "split", "artifacts": {}}),
+        encoding="utf-8",
+    )
+    assert discover_runs(tmp_path) == []
+    assert len(discover_runs(tmp_path, output_root="outputs/.ui-temporary")) == 1
+
+
 def test_s3_manifest_is_preferred_over_centralized_v1_manifest(tmp_path: Path) -> None:
     run_dir = tmp_path / "outputs" / "centralized"
     run_dir.mkdir(parents=True)

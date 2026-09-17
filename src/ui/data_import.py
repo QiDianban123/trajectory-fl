@@ -129,6 +129,18 @@ def find_processed_summary(processed_root: str | Path) -> ProcessedDataSummary:
         raise ValueError(f"无法读取预处理摘要：{exc}") from exc
 
 
+def remove_temporary_run(project_root: str | Path, run_dir: str | Path) -> None:
+    """Delete exactly one disposable UI run and reject every non-temporary target."""
+
+    root = Path(project_root).resolve()
+    temporary_root = resolve_within(root, "outputs/.ui-temporary")
+    candidate = Path(run_dir).resolve()
+    if candidate.parent != temporary_root or not candidate.name:
+        raise ValueError("拒绝清理非 UI 临时训练目录。")
+    if candidate.is_dir():
+        shutil.rmtree(candidate)
+
+
 def _safe_csv_name(value: str) -> str:
     name = Path(value).name
     if name != value or not name or name.startswith(".") or Path(name).suffix.lower() != ".csv":

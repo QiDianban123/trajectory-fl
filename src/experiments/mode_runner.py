@@ -98,9 +98,13 @@ def _prepare(bundle, project_root, processed_dir, output_root, data_version, spl
     root = Path(project_root).resolve()
     processed = _path(root, Path(processed_dir), "processed_dir")
     output = _path(root, Path(output_root), "output_root")
-    if output != (root / "outputs").resolve():
-        raise ExperimentInputError("output_root must be outputs")
-    if not any(processed.is_relative_to(p) for p in ((root / "data/processed").resolve(), output)):
+    outputs_root = (root / "outputs").resolve()
+    if not output.is_relative_to(outputs_root):
+        raise ExperimentInputError("output_root must be outputs or one of its subdirectories")
+    if not any(
+        processed.is_relative_to(path)
+        for path in ((root / "data/processed").resolve(), outputs_root)
+    ):
         raise ExperimentInputError("processed_dir must be under data/processed or outputs")
     settings = _settings(bundle)
     data = ProcessedDatasetReader().load(

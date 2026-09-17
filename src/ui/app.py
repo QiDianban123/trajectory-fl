@@ -20,7 +20,11 @@ from src.ui.capabilities import (
     s3_capabilities,
 )
 from src.ui.command_runner import CommandResult, CommandRunner, UiRunState
-from src.ui.data_import import find_processed_summary, save_uploaded_csvs
+from src.ui.data_import import (
+    find_processed_summary,
+    remove_temporary_run,
+    save_uploaded_csvs,
+)
 from src.ui.run_index import (
     FinalArchiveSummary,
     RunSummary,
@@ -104,6 +108,11 @@ def _build_command(action: str):
     mode = action.removesuffix("_train").removesuffix("_resume")
     run_id = st.text_input("run_id", value=f"{mode}-ui-{int(time.time())}")
     rounds = st.number_input("训练轮数", min_value=1, max_value=100, value=1, step=1)
+    if action != "resume":
+        available = _available_run_id(PROJECT_ROOT / "outputs", run_id)
+        if available != run_id:
+            st.info(f"运行名称已存在，本次将自动保存为：{available}")
+        run_id = available
     try:
         if action == "centralized_train":
             preflight = preflight_s3_fairness(
@@ -239,16 +248,28 @@ def _demo_workbench() -> None:
         )
         default_run_id = f"demo-{mode}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         run_id = right.text_input("本次训练名称", value=default_run_id, key="demo_run_id")
+        keep_result = st.checkbox(
+            "保留本次训练成果",
+            value=True,
+            help="勾选后长期保存到 outputs；取消后仅显示本次图表，随后清理临时文件。",
+        )
         st.caption(
             "为了课堂演示，建议先选择 1–3 轮和较小数据集；正式归档结果不会被本次演示覆盖。"
         )
+        output_root = "outputs" if keep_result else "outputs/.ui-temporary"
+        effective_run_id = _available_run_id(PROJECT_ROOT / output_root, run_id)
+        if effective_run_id != run_id:
+            st.info(f"运行名称已存在，本次将自动保存为：{effective_run_id}")
+        if not keep_result:
+            st.info("临时模式：页面会先展示指标和图表，然后删除本次模型及运行文件。")
         try:
             command = build_s3_train_command(
                 PROJECT_ROOT,
                 mode=mode,
                 processed_dir=processed_dir,
-                run_id=run_id,
+                run_id=effective_run_id,
                 rounds=int(rounds),
+                output_root=output_root,
             )
             st.code(command.preview, language="text")
         except (UiCommandError, ValueError) as exc:
@@ -258,9 +279,24 @@ def _demo_workbench() -> None:
             assert command is not None
             result = _run_command(command, announce=False)
             if result.succeeded:
-                st.session_state["demo_last_run_dir"] = run_id
-                st.success("训练完成，结果和图表已在下方生成。")
+                if keep_result:
+                    st.session_state["demo_last_run_dir"] = effective_run_id
+                    st.success(f"训练完成并已保留：outputs/{effective_run_id}")
+                else:
+                    temporary_dir = PROJECT_ROOT / output_root / effective_run_id
+                    run = _find_run(output_root, effective_run_id)
+                    try:
+                        if run is not None:
+                            st.subheader("本次临时演示结果")
+                            _show_metrics(run)
+                    finally:
+                        remove_temporary_run(PROJECT_ROOT, temporary_dir)
+                    st.success("图表已生成；本次临时模型和运行文件已清理。")
             else:
+                if not keep_result:
+                    remove_temporary_run(
+                        PROJECT_ROOT, PROJECT_ROOT / output_root / effective_run_id
+                    )
                 st.error("训练失败，请查看命令输出。")
 
         last_run_dir = st.session_state.get("demo_last_run_dir")
@@ -273,6 +309,29 @@ def _demo_workbench() -> None:
                 st.subheader("本次演示结果")
                 _show_metrics(run)
                 _show_artifacts(run)
+
+
+def _available_run_id(output_root: Path, requested: str) -> str:
+    """Return a stable non-conflicting run id without altering existing results."""
+
+    if not (output_root / requested).exists():
+        return requested
+    for suffix in range(2, 10_000):
+        candidate = f"{requested}-{suffix}"
+        if not (output_root / candidate).exists():
+            return candidate
+    return f"{requested}-{uuid4().hex[:8]}"
+
+
+def _find_run(output_root: str, run_id: str) -> RunSummary | None:
+    return next(
+        (
+            item
+            for item in discover_runs(PROJECT_ROOT, output_root=output_root)
+            if item.run_dir.name == run_id
+        ),
+        None,
+    )
 
 
 def _show_processed_summary(processed_dir: Path) -> None:

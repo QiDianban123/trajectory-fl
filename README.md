@@ -138,7 +138,9 @@ python scripts\run_ui.py
 字段检查、轨迹清洗、车辆级训练/验证/测试划分、归一化和 5-RSU 分区，然后选择 1—100 轮执行
 Centralized、Local-only 或 Federated 训练。训练结束后，页面会展示 ADE/FDE；Centralized 展示
 损失曲线和预测轨迹，Local-only 展示各 RSU 结果，Federated 展示逐轮损失与 ADE/FDE 收敛曲线。
-上传文件只写入 `outputs/ui-import-*`，不会覆盖原始数据或正式归档。
+“保留本次训练成果”默认开启：同名运行会自动选择新名称并保存到 `outputs/`；关闭后，页面先
+展示本次指标和图表，再删除 `outputs/.ui-temporary/` 下对应的临时模型与运行文件。上传文件只
+写入 `outputs/ui-import-*`，任何演示选项都不会覆盖或删除原始数据、历史运行或正式归档。
 
 ## S3-G 三模式编排边界
 

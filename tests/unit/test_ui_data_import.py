@@ -8,7 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from src.ui.data_import import find_processed_summary, save_uploaded_csvs
+from src.ui.data_import import (
+    find_processed_summary,
+    remove_temporary_run,
+    save_uploaded_csvs,
+)
 
 
 @dataclass
@@ -72,3 +76,17 @@ def test_processed_summary_reads_split_and_rsu_counts(tmp_path: Path) -> None:
     summary = find_processed_summary(tmp_path / "processed")
     assert summary.sample_counts == {"train": 7, "validation": 2, "test": 1}
     assert summary.client_counts == {"rsu_01": 7}
+
+
+def test_temporary_cleanup_cannot_remove_retained_results(tmp_path: Path) -> None:
+    temporary = tmp_path / "outputs/.ui-temporary/demo-1"
+    temporary.mkdir(parents=True)
+    (temporary / "metrics.json").write_text("{}", encoding="utf-8")
+    retained = tmp_path / "outputs/retained-demo"
+    retained.mkdir(parents=True)
+
+    remove_temporary_run(tmp_path, temporary)
+    assert not temporary.exists()
+    with pytest.raises(ValueError, match="非 UI 临时"):
+        remove_temporary_run(tmp_path, retained)
+    assert retained.is_dir()

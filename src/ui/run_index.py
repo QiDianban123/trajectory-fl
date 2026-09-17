@@ -74,11 +74,20 @@ def discover_runs(project_root: str | Path, output_root: str = "outputs") -> lis
     if not outputs.is_dir():
         return []
     summaries: list[RunSummary] = []
-    s3_manifests = sorted(outputs.rglob("s3_manifest.json"), key=lambda path: path.as_posix())
+    hide_temporary = Path(output_root).as_posix().rstrip("/") == "outputs"
+
+    def visible(path: Path) -> bool:
+        return not hide_temporary or ".ui-temporary" not in path.relative_to(outputs).parts
+
+    s3_manifests = sorted(
+        (path for path in outputs.rglob("s3_manifest.json") if visible(path)),
+        key=lambda path: path.as_posix(),
+    )
     preferred_directories = {path.parent.resolve() for path in s3_manifests}
     manifests = s3_manifests + [
         path
         for path in sorted(outputs.rglob("manifest.json"), key=lambda path: path.as_posix())
+        if visible(path)
         if path.parent.resolve() not in preferred_directories
     ]
     for manifest_path in manifests:

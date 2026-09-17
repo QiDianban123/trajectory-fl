@@ -171,6 +171,25 @@ def test_ui_builds_prepare_and_variable_round_commands(tmp_path: Path) -> None:
     )
     assert train.argv[train.argv.index("--rounds") + 1] == "3"
     assert train.timeout_seconds == 3600
+    temporary = build_s3_train_command(
+        root,
+        mode="federated",
+        processed_dir="outputs/processed/split",
+        run_id="temporary-demo",
+        rounds=1,
+        output_root="outputs/.ui-temporary",
+    )
+    assert temporary.argv[temporary.argv.index("--output-root") + 1] == (
+        "outputs/.ui-temporary"
+    )
+    with pytest.raises(UiCommandError, match="under outputs"):
+        build_s3_train_command(
+            root,
+            mode="federated",
+            processed_dir="outputs/processed/split",
+            run_id="escaped-output",
+            output_root="elsewhere",
+        )
     with pytest.raises(UiCommandError, match="rounds"):
         build_s3_train_command(
             root,
